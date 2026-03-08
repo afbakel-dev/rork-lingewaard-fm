@@ -11,17 +11,12 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import TrackPlayer, {
-  usePlaybackState,
-  useIsPlaying,
-  Capability,
-  AppKilledPlaybackBehavior,
-} from 'react-native-track-player';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import Colors from '@/constants/colors';
+import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
 
 const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
@@ -41,33 +36,6 @@ interface IcecastResponse {
   };
 }
 
-let isTrackPlayerSetup = false;
-
-async function setupTrackPlayer() {
-  if (isTrackPlayerSetup) return;
-  try {
-    await TrackPlayer.setupPlayer();
-    await TrackPlayer.updateOptions({
-      capabilities: [
-        Capability.Play,
-        Capability.Pause,
-        Capability.Stop,
-      ],
-      compactCapabilities: [
-        Capability.Play,
-        Capability.Pause,
-      ],
-      android: {
-        appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
-      },
-    });
-    isTrackPlayerSetup = true;
-    console.log('TrackPlayer setup complete — Control Center / AirPlay / Lock Screen ready');
-  } catch (error) {
-    console.error('TrackPlayer setup failed:', error);
-  }
-}
-
 export default function RadioPlayer() {
   const insets = useSafeAreaInsets();
   const [playerState, setPlayerState] = useState<PlayerState>('idle');
@@ -76,9 +44,7 @@ export default function RadioPlayer() {
   const [nowPlaying, setNowPlaying] = useState<string>(NOW_PLAYING_PLACEHOLDER);
   const [isNowPlayingLoading, setIsNowPlayingLoading] = useState<boolean>(false);
   const previousVolumeRef = useRef<number>(1.0);
-
-  const playbackState = usePlaybackState();
-  const { playing: isPlaying, bufferingDuringPlay } = useIsPlaying();
+  const audioPlayerRef = useRef<AudioPlayerAPI | null>(null);
 
   const glowAnim = useRef(new Animated.Value(0.3)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -89,20 +55,13 @@ export default function RadioPlayer() {
   const waveAnim4 = useRef(new Animated.Value(0.4)).current;
   const waveAnim5 = useRef(new Animated.Value(0.6)).current;
 
-  // Setup TrackPlayer on mount
   useEffect(() => {
-    setupTrackPlayer();
+    void getAudioPlayer().then((player) => {
+      audioPlayerRef.current = player;
+      void player.setup();
+      console.log('Audio player initialized');
+    });
   }, []);
-
-  // Sync TrackPlayer state to our UI state
-  useEffect(() => {
-    if (isPlaying) {
-      setPlayerState('playing');
-      setErrorMessage('');
-    } else if (bufferingDuringPlay) {
-      setPlayerState('loading');
-    }
-  }, [isPlaying, bufferingDuringPlay]);
 
   useEffect(() => {
     const liveBlink = Animated.loop(
@@ -176,25 +135,8 @@ export default function RadioPlayer() {
       console.log('Now playing metadata received:', nextTitle);
       setNowPlaying(nextTitle);
 
-      // Update Control Center / Lock Screen / AirPlay metadata
-      try {
-        await TrackPlayer.updateNowPlayingMetadata({
-          title: nextTitle,
-          artist: 'Lingewaard FM',
-        });
-      } catch (e) {
-        // Fallback: update via track metadata
-        try {
-          const trackIndex = await TrackPlayer.getActiveTrackIndex();
-          if (trackIndex !== null && trackIndex !== undefined) {
-            await TrackPlayer.updateMetadataForTrack(trackIndex, {
-              title: nextTitle,
-              artist: 'Lingewaard FM',
-            });
-          }
-        } catch (e2) {
-          console.error('Failed to update track metadata:', e2);
-        }
+      if (audioPlayerRef.current) {
+        await audioPlayerRef.current.updateMetadata(nextTitle, 'Lingewaard FM');
       }
     } catch (error) {
       console.error('Failed to fetch now playing metadata:', error);
@@ -206,26 +148,20 @@ export default function RadioPlayer() {
 
   const startStream = useCallback(async () => {
     try {
-      console.log('Starting stream with react-native-track-player...');
+      console.log('Starting stream...');
       setPlayerState('loading');
       setErrorMessage('');
 
-      await setupTrackPlayer();
+      const player = audioPlayerRef.current;
+      if (!player) {
+        const p = await getAudioPlayer();
+        audioPlayerRef.current = p;
+        await p.setup();
+      }
 
-      // Reset any previous track
-      await TrackPlayer.reset();
-
-      // Add the live stream as a track
-      await TrackPlayer.add({
-        url: STREAM_URL,
-        title: 'Live uitzending',
-        artist: 'Lingewaard FM',
-        isLiveStream: true,
-      });
-
-      // Start playback
-      await TrackPlayer.play();
-      console.log('TrackPlayer playing — visible in Control Center / AirPlay / Lock Screen');
+      await audioPlayerRef.current!.play(STREAM_URL, 'Live uitzending', 'Lingewaard FM');
+      setPlayerState('playing');
+      console.log('Stream started successfully');
     } catch (error) {
       console.error('Failed to start stream:', error);
       setPlayerState('error');
@@ -236,7 +172,7 @@ export default function RadioPlayer() {
   const stopStream = useCallback(async () => {
     try {
       console.log('Stopping stream...');
-      await TrackPlayer.reset();
+      await audioPlayerRef.current?.stop();
     } catch (error) {
       console.error('Failed to stop stream:', error);
     } finally {
@@ -265,12 +201,15 @@ export default function RadioPlayer() {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     try {
+      const player = audioPlayerRef.current;
+      if (!player) return;
+
       if (newMuted) {
-        const currentVolume = await TrackPlayer.getVolume();
+        const currentVolume = await player.getVolume();
         previousVolumeRef.current = currentVolume;
-        await TrackPlayer.setVolume(0);
+        await player.setVolume(0);
       } else {
-        await TrackPlayer.setVolume(previousVolumeRef.current || 1.0);
+        await player.setVolume(previousVolumeRef.current || 1.0);
       }
       console.log('Mute toggled:', newMuted);
     } catch (error) {
