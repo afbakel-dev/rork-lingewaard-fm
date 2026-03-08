@@ -2,11 +2,11 @@ import { Platform } from 'react-native';
 
 export interface AudioPlayerAPI {
   setup: () => Promise<void>;
-  play: (url: string, title: string, artist: string) => Promise<void>;
+  play: (url: string, title: string, artist: string, artwork?: string) => Promise<void>;
   stop: () => Promise<void>;
   setVolume: (volume: number) => Promise<void>;
   getVolume: () => Promise<number>;
-  updateMetadata: (title: string, artist: string) => Promise<void>;
+  updateMetadata: (title: string, artist: string, artwork?: string) => Promise<void>;
 }
 
 let webAudio: HTMLAudioElement | null = null;
@@ -48,7 +48,7 @@ const WebAudioPlayer: AudioPlayerAPI = {
   getVolume: async () => {
     return webVolume;
   },
-  updateMetadata: async (_title: string, _artist: string) => {
+  updateMetadata: async (_title: string, _artist: string, _artwork?: string) => {
     // No-op on web
   },
 };
@@ -81,12 +81,13 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         console.error('TrackPlayer setup failed:', error);
       }
     },
-    play: async (url: string, title: string, artist: string) => {
+    play: async (url: string, title: string, artist: string, artwork?: string) => {
       await TrackPlayer.reset();
       await TrackPlayer.add({
         url,
         title,
         artist,
+        artwork: artwork || undefined,
         isLiveStream: true,
       });
       await TrackPlayer.play();
@@ -102,14 +103,14 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     getVolume: async () => {
       return TrackPlayer.getVolume();
     },
-    updateMetadata: async (title: string, artist: string) => {
+    updateMetadata: async (title: string, artist: string, artwork?: string) => {
       try {
-        await (TrackPlayer as any).updateNowPlayingMetadata({ title, artist });
+        await (TrackPlayer as any).updateNowPlayingMetadata({ title, artist, artwork });
       } catch {
         try {
           const trackIndex = await TrackPlayer.getActiveTrackIndex();
           if (trackIndex !== null && trackIndex !== undefined) {
-            await TrackPlayer.updateMetadataForTrack(trackIndex, { title, artist });
+            await TrackPlayer.updateMetadataForTrack(trackIndex, { title, artist, artwork });
           }
         } catch (e2) {
           console.error('Failed to update track metadata:', e2);

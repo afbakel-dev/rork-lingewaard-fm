@@ -21,6 +21,7 @@ import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
 const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
 const WHATSAPP_NUMBER: string = '+31680160513';
+const LOGO_ARTWORK = require('@/assets/images/lingewaard-fm-logo.jpg');
 const NOW_PLAYING_PLACEHOLDER: string = 'Live uitzending';
 
 type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
@@ -136,7 +137,8 @@ export default function RadioPlayer() {
       setNowPlaying(nextTitle);
 
       if (audioPlayerRef.current) {
-        await audioPlayerRef.current.updateMetadata(nextTitle, 'Lingewaard FM');
+        const artworkUri = Platform.OS !== 'web' ? Image.resolveAssetSource(LOGO_ARTWORK).uri : undefined;
+        await audioPlayerRef.current.updateMetadata(nextTitle, 'Lingewaard FM', artworkUri);
       }
     } catch (error) {
       console.error('Failed to fetch now playing metadata:', error);
@@ -159,7 +161,8 @@ export default function RadioPlayer() {
         await p.setup();
       }
 
-      await audioPlayerRef.current!.play(STREAM_URL, 'Live uitzending', 'Lingewaard FM');
+      const artworkUri = Platform.OS !== 'web' ? Image.resolveAssetSource(LOGO_ARTWORK).uri : undefined;
+      await audioPlayerRef.current!.play(STREAM_URL, 'Live uitzending', 'Lingewaard FM', artworkUri);
       setPlayerState('playing');
       console.log('Stream started successfully');
     } catch (error) {
