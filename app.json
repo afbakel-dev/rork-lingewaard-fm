@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Lingewaard FM",
-    "slug": "lingewaard-fm-app",
+    "slug": "lingewaard-fm",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
