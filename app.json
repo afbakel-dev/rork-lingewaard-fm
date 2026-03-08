@@ -41,8 +41,7 @@
       ],
       "expo-audio",
       "expo-font",
-      "expo-web-browser",
-      "./modules/airplay-route-picker"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
