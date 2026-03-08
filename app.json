@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "bibabc.lingewaardfm",
+      "bundleIdentifier": "bibabc.lingewaardfm.live",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
