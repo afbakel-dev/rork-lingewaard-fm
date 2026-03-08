@@ -4,8 +4,10 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
+import TrackPlayer from "react-native-track-player";
 
 SplashScreen.preventAutoHideAsync();
+TrackPlayer.registerPlaybackService(() => require('../service'));
 
 const queryClient = new QueryClient();
 

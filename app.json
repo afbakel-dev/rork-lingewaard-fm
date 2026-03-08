@@ -41,7 +41,8 @@
       ],
       "expo-audio",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "react-native-track-player"
     ],
     "experiments": {
       "typedRoutes": true

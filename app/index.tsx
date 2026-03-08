@@ -11,7 +11,12 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { useAudioPlayer, useAudioPlayerStatus, AudioModule } from 'expo-audio';
+import TrackPlayer, {
+  usePlaybackState,
+  useIsPlaying,
+  Capability,
+  AppKilledPlaybackBehavior,
+} from 'react-native-track-player';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
@@ -36,6 +41,33 @@ interface IcecastResponse {
   };
 }
 
+let isTrackPlayerSetup = false;
+
+async function setupTrackPlayer() {
+  if (isTrackPlayerSetup) return;
+  try {
+    await TrackPlayer.setupPlayer();
+    await TrackPlayer.updateOptions({
+      capabilities: [
+        Capability.Play,
+        Capability.Pause,
+        Capability.Stop,
+      ],
+      compactCapabilities: [
+        Capability.Play,
+        Capability.Pause,
+      ],
+      android: {
+        appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
+      },
+    });
+    isTrackPlayerSetup = true;
+    console.log('TrackPlayer setup complete — Control Center / AirPlay / Lock Screen ready');
+  } catch (error) {
+    console.error('TrackPlayer setup failed:', error);
+  }
+}
+
 export default function RadioPlayer() {
   const insets = useSafeAreaInsets();
   const [playerState, setPlayerState] = useState<PlayerState>('idle');
@@ -43,7 +75,10 @@ export default function RadioPlayer() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [nowPlaying, setNowPlaying] = useState<string>(NOW_PLAYING_PLACEHOLDER);
   const [isNowPlayingLoading, setIsNowPlayingLoading] = useState<boolean>(false);
-  const [isStreamActive, setIsStreamActive] = useState<boolean>(false);
+  const previousVolumeRef = useRef<number>(1.0);
+
+  const playbackState = usePlaybackState();
+  const { playing: isPlaying, bufferingDuringPlay } = useIsPlaying();
 
   const glowAnim = useRef(new Animated.Value(0.3)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -54,70 +89,20 @@ export default function RadioPlayer() {
   const waveAnim4 = useRef(new Animated.Value(0.4)).current;
   const waveAnim5 = useRef(new Animated.Value(0.6)).current;
 
-  // Configure audio session for background playback and AirPlay
+  // Setup TrackPlayer on mount
   useEffect(() => {
-    console.log('Configuring audio session for background + AirPlay (expo-audio)...');
-    AudioModule.setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      interruptionMode: 'doNotMix',
-    }).then(() => {
-      console.log('Audio mode configured successfully (expo-audio) - AirPlay/Control Center ready');
-    }).catch((error: unknown) => {
-      console.error('Failed to configure audio mode:', error);
-    });
+    setupTrackPlayer();
   }, []);
 
-  // Create audio player — starts with no source, we load on play
-  const player = useAudioPlayer(
-    isStreamActive ? { uri: STREAM_URL } : undefined
-  );
-  const status = useAudioPlayerStatus(player);
-
-  // Sync player status to our state
+  // Sync TrackPlayer state to our UI state
   useEffect(() => {
-    if (!isStreamActive) return;
-
-    if (status.playing) {
+    if (isPlaying) {
       setPlayerState('playing');
       setErrorMessage('');
-    } else if (status.isBuffering) {
+    } else if (bufferingDuringPlay) {
       setPlayerState('loading');
-    } else if (status.didJustFinish) {
-      console.log('Stream ended');
-      setPlayerState('idle');
-      setIsStreamActive(false);
     }
-  }, [status.playing, status.isBuffering, status.didJustFinish, isStreamActive]);
-
-  // Enable lock screen controls and set metadata when playing
-  useEffect(() => {
-    if (playerState === 'playing') {
-      try {
-        player.setActiveForLockScreen(true, {
-          title: nowPlaying || 'Live uitzending',
-          artist: 'Lingewaard FM',
-        });
-        console.log('Lock screen / Control Center activated with metadata');
-      } catch (error) {
-        console.error('Failed to set lock screen info:', error);
-      }
-    }
-  }, [playerState, player]);
-
-  // Update lock screen metadata when now playing changes
-  useEffect(() => {
-    if (playerState === 'playing' && nowPlaying !== NOW_PLAYING_PLACEHOLDER) {
-      try {
-        player.updateLockScreenMetadata({
-          title: nowPlaying,
-          artist: 'Lingewaard FM',
-        });
-      } catch (error) {
-        console.error('Failed to update lock screen metadata:', error);
-      }
-    }
-  }, [nowPlaying, playerState, player]);
+  }, [isPlaying, bufferingDuringPlay]);
 
   useEffect(() => {
     const liveBlink = Animated.loop(
@@ -190,6 +175,27 @@ export default function RadioPlayer() {
       const nextTitle = source?.title?.trim() || source?.yp_currently_playing?.trim() || NOW_PLAYING_PLACEHOLDER;
       console.log('Now playing metadata received:', nextTitle);
       setNowPlaying(nextTitle);
+
+      // Update Control Center / Lock Screen / AirPlay metadata
+      try {
+        await TrackPlayer.updateNowPlayingMetadata({
+          title: nextTitle,
+          artist: 'Lingewaard FM',
+        });
+      } catch (e) {
+        // Fallback: update via track metadata
+        try {
+          const trackIndex = await TrackPlayer.getActiveTrackIndex();
+          if (trackIndex !== null && trackIndex !== undefined) {
+            await TrackPlayer.updateMetadataForTrack(trackIndex, {
+              title: nextTitle,
+              artist: 'Lingewaard FM',
+            });
+          }
+        } catch (e2) {
+          console.error('Failed to update track metadata:', e2);
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch now playing metadata:', error);
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
@@ -198,45 +204,46 @@ export default function RadioPlayer() {
     }
   }, []);
 
-  const startStream = useCallback(() => {
+  const startStream = useCallback(async () => {
     try {
-      console.log('Starting stream with expo-audio (AirPlay/Control Center compatible)...');
+      console.log('Starting stream with react-native-track-player...');
       setPlayerState('loading');
       setErrorMessage('');
-      setIsStreamActive(true);
-      // The useAudioPlayer hook will load the source when isStreamActive becomes true
-      // Then we play after a short delay to let it load
-      setTimeout(() => {
-        try {
-          player.play();
-        } catch (error) {
-          console.error('Failed to play:', error);
-        }
-      }, 100);
+
+      await setupTrackPlayer();
+
+      // Reset any previous track
+      await TrackPlayer.reset();
+
+      // Add the live stream as a track
+      await TrackPlayer.add({
+        url: STREAM_URL,
+        title: 'Live uitzending',
+        artist: 'Lingewaard FM',
+        isLiveStream: true,
+      });
+
+      // Start playback
+      await TrackPlayer.play();
+      console.log('TrackPlayer playing — visible in Control Center / AirPlay / Lock Screen');
     } catch (error) {
       console.error('Failed to start stream:', error);
       setPlayerState('error');
       setErrorMessage('Kan stream niet laden');
     }
-  }, [player]);
+  }, []);
 
-  const stopStream = useCallback(() => {
+  const stopStream = useCallback(async () => {
     try {
       console.log('Stopping stream...');
-      player.pause();
-      try {
-        player.clearLockScreenControls();
-      } catch (error) {
-        console.error('Failed to clear lock screen:', error);
-      }
+      await TrackPlayer.reset();
     } catch (error) {
       console.error('Failed to stop stream:', error);
     } finally {
-      setIsStreamActive(false);
       setPlayerState('idle');
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
     }
-  }, [player]);
+  }, []);
 
   const togglePlay = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -247,23 +254,29 @@ export default function RadioPlayer() {
     ]).start();
 
     if (playerState === 'playing') {
-      stopStream();
+      void stopStream();
     } else if (playerState !== 'loading') {
-      startStream();
+      void startStream();
     }
   }, [playerState, startStream, stopStream, buttonScale]);
 
-  const toggleMute = useCallback(() => {
+  const toggleMute = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     try {
-      player.muted = newMuted;
+      if (newMuted) {
+        const currentVolume = await TrackPlayer.getVolume();
+        previousVolumeRef.current = currentVolume;
+        await TrackPlayer.setVolume(0);
+      } else {
+        await TrackPlayer.setVolume(previousVolumeRef.current || 1.0);
+      }
       console.log('Mute toggled:', newMuted);
     } catch (error) {
       console.error('Failed to toggle mute:', error);
     }
-  }, [isMuted, player]);
+  }, [isMuted]);
 
   const openWhatsApp = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -339,7 +352,7 @@ export default function RadioPlayer() {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 Alert.alert(
                   'AirPlay',
-                  'Om via AirPlay te luisteren:\n\n1. Open het Bedieningspaneel\n   (veeg van rechtsboven naar beneden)\n2. Houd het muziekblok ingedrukt\n3. Tik op het AirPlay icoon \u{1F50A}\n4. Kies je AirPlay speaker\n\nLingewaard FM is zichtbaar zodra de stream speelt.',
+                  'Om via AirPlay te luisteren:\n\n1. Open het Bedieningspaneel\n   (veeg van rechtsboven naar beneden)\n2. Houd het muziekblok ingedrukt\n3. Tik op het AirPlay icoon\n4. Kies je AirPlay speaker\n\nLingewaard FM is nu zichtbaar in het Bedieningspaneel.',
                   [{ text: 'Begrepen', style: 'default' }]
                 );
               }}
