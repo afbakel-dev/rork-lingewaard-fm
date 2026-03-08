@@ -67,7 +67,13 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     setup: async () => {
       if (isSetup) return;
       try {
-        await TrackPlayer.setupPlayer();
+        await TrackPlayer.setupPlayer({
+          maxBuffer: 50,       // 50s max buffer — helps AirPlay/Sonos stability
+          minBuffer: 15,       // 15s min buffer before playback can start
+          playBuffer: 2.5,     // Start playing after 2.5s buffered
+          backBuffer: 0,       // No back buffer needed for live streams
+          waitForBuffer: true,  // Wait for sufficient buffer before playing
+        });
         await TrackPlayer.updateOptions({
           capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
           compactCapabilities: [Capability.Play, Capability.Pause],
@@ -76,7 +82,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           },
         });
         isSetup = true;
-        console.log('TrackPlayer setup complete');
+        console.log('TrackPlayer setup complete with AirPlay-optimized buffering');
       } catch (error) {
         console.error('TrackPlayer setup failed:', error);
       }
