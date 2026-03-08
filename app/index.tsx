@@ -11,7 +11,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Audio, AVPlaybackStatus, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { useAudioPlayer, useAudioPlayerStatus, AudioModule } from 'expo-audio';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
@@ -43,9 +43,7 @@ export default function RadioPlayer() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [nowPlaying, setNowPlaying] = useState<string>(NOW_PLAYING_PLACEHOLDER);
   const [isNowPlayingLoading, setIsNowPlayingLoading] = useState<boolean>(false);
-
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const isUnmountedRef = useRef<boolean>(false);
+  const [isStreamActive, setIsStreamActive] = useState<boolean>(false);
 
   const glowAnim = useRef(new Animated.Value(0.3)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -56,30 +54,70 @@ export default function RadioPlayer() {
   const waveAnim4 = useRef(new Animated.Value(0.4)).current;
   const waveAnim5 = useRef(new Animated.Value(0.6)).current;
 
+  // Configure audio session for background playback and AirPlay
   useEffect(() => {
-    console.log('Configuring audio session for background + AirPlay (expo-av)...');
-    Audio.setAudioModeAsync({
-      staysActiveInBackground: true,
-      playsInSilentModeIOS: true,
-      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-      shouldDuckAndroid: true,
-      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-      playThroughEarpieceAndroid: false,
+    console.log('Configuring audio session for background + AirPlay (expo-audio)...');
+    AudioModule.setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
     }).then(() => {
-      console.log('Audio mode configured successfully (expo-av) - AirPlay/Control Center ready');
-    }).catch((error) => {
+      console.log('Audio mode configured successfully (expo-audio) - AirPlay/Control Center ready');
+    }).catch((error: unknown) => {
       console.error('Failed to configure audio mode:', error);
     });
-
-    return () => {
-      isUnmountedRef.current = true;
-      if (soundRef.current) {
-        console.log('Unloading sound on unmount');
-        soundRef.current.unloadAsync().catch(console.error);
-        soundRef.current = null;
-      }
-    };
   }, []);
+
+  // Create audio player — starts with no source, we load on play
+  const player = useAudioPlayer(
+    isStreamActive ? { uri: STREAM_URL } : undefined
+  );
+  const status = useAudioPlayerStatus(player);
+
+  // Sync player status to our state
+  useEffect(() => {
+    if (!isStreamActive) return;
+
+    if (status.playing) {
+      setPlayerState('playing');
+      setErrorMessage('');
+    } else if (status.isBuffering) {
+      setPlayerState('loading');
+    } else if (status.didJustFinish) {
+      console.log('Stream ended');
+      setPlayerState('idle');
+      setIsStreamActive(false);
+    }
+  }, [status.playing, status.isBuffering, status.didJustFinish, isStreamActive]);
+
+  // Enable lock screen controls and set metadata when playing
+  useEffect(() => {
+    if (playerState === 'playing') {
+      try {
+        player.setActiveForLockScreen(true, {
+          title: nowPlaying || 'Live uitzending',
+          artist: 'Lingewaard FM',
+        });
+        console.log('Lock screen / Control Center activated with metadata');
+      } catch (error) {
+        console.error('Failed to set lock screen info:', error);
+      }
+    }
+  }, [playerState, player]);
+
+  // Update lock screen metadata when now playing changes
+  useEffect(() => {
+    if (playerState === 'playing' && nowPlaying !== NOW_PLAYING_PLACEHOLDER) {
+      try {
+        player.updateLockScreenMetadata({
+          title: nowPlaying,
+          artist: 'Lingewaard FM',
+        });
+      } catch (error) {
+        console.error('Failed to update lock screen metadata:', error);
+      }
+    }
+  }, [nowPlaying, playerState, player]);
 
   useEffect(() => {
     const liveBlink = Animated.loop(
@@ -160,92 +198,45 @@ export default function RadioPlayer() {
     }
   }, []);
 
-  const onPlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
-    if (isUnmountedRef.current) return;
-
-    if (!status.isLoaded) {
-      if (status.error) {
-        console.error('Playback error (expo-av):', status.error);
-        setPlayerState('error');
-        setErrorMessage('Stream fout: ' + status.error);
-      }
-      return;
-    }
-
-    console.log('expo-av playback status:', {
-      isPlaying: status.isPlaying,
-      isBuffering: status.isBuffering,
-      isLoaded: status.isLoaded,
-      didJustFinish: status.didJustFinish,
-      uri: status.uri,
-    });
-
-    if (status.isPlaying) {
-      setPlayerState('playing');
-      setErrorMessage('');
-    } else if (status.isBuffering) {
-      setPlayerState('loading');
-    } else if (status.didJustFinish) {
-      console.log('Stream ended, attempting to reconnect...');
-      setPlayerState('idle');
-    }
-  }, []);
-
-  const startStream = useCallback(async () => {
+  const startStream = useCallback(() => {
     try {
-      console.log('Starting stream with expo-av (AirPlay/Control Center compatible)...');
+      console.log('Starting stream with expo-audio (AirPlay/Control Center compatible)...');
       setPlayerState('loading');
       setErrorMessage('');
-
-      if (soundRef.current) {
-        console.log('Unloading previous sound...');
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-
-      console.log('Creating new Audio.Sound with URL:', STREAM_URL);
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: STREAM_URL },
-        {
-          shouldPlay: true,
-          isLooping: false,
-          isMuted: isMuted,
-          volume: 1.0,
-        },
-        onPlaybackStatusUpdate
-      );
-
-      if (isUnmountedRef.current) {
-        await sound.unloadAsync();
-        return;
-      }
-
-      soundRef.current = sound;
-      console.log('Audio.Sound created and playing - should appear in Control Center / AirPlay');
+      setIsStreamActive(true);
+      // The useAudioPlayer hook will load the source when isStreamActive becomes true
+      // Then we play after a short delay to let it load
+      setTimeout(() => {
+        try {
+          player.play();
+        } catch (error) {
+          console.error('Failed to play:', error);
+        }
+      }, 100);
     } catch (error) {
       console.error('Failed to start stream:', error);
-      if (!isUnmountedRef.current) {
-        setPlayerState('error');
-        setErrorMessage('Kan stream niet laden');
-      }
+      setPlayerState('error');
+      setErrorMessage('Kan stream niet laden');
     }
-  }, [isMuted, onPlaybackStatusUpdate]);
+  }, [player]);
 
-  const stopStream = useCallback(async () => {
+  const stopStream = useCallback(() => {
     try {
       console.log('Stopping stream...');
-      if (soundRef.current) {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+      player.pause();
+      try {
+        player.clearLockScreenControls();
+      } catch (error) {
+        console.error('Failed to clear lock screen:', error);
       }
     } catch (error) {
       console.error('Failed to stop stream:', error);
     } finally {
+      setIsStreamActive(false);
       setPlayerState('idle');
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
     }
-  }, []);
+  }, [player]);
 
   const togglePlay = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -256,25 +247,23 @@ export default function RadioPlayer() {
     ]).start();
 
     if (playerState === 'playing') {
-      void stopStream();
+      stopStream();
     } else if (playerState !== 'loading') {
-      void startStream();
+      startStream();
     }
   }, [playerState, startStream, stopStream, buttonScale]);
 
-  const toggleMute = useCallback(async () => {
+  const toggleMute = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     try {
-      if (soundRef.current) {
-        await soundRef.current.setIsMutedAsync(newMuted);
-        console.log('Mute toggled:', newMuted);
-      }
+      player.muted = newMuted;
+      console.log('Mute toggled:', newMuted);
     } catch (error) {
       console.error('Failed to toggle mute:', error);
     }
-  }, [isMuted]);
+  }, [isMuted, player]);
 
   const openWhatsApp = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
