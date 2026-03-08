@@ -9,14 +9,14 @@ import {
   ActivityIndicator,
   Image,
   Platform,
-  Alert,
 } from 'react-native';
 import { Audio, AVPlaybackStatus, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
+import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import Colors from '@/constants/colors';
+import { AirPlayButton, updateNowPlaying, clearNowPlaying } from '../modules/airplay-route-picker';
 
 const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
@@ -152,6 +152,11 @@ export default function RadioPlayer() {
       const nextTitle = source?.title?.trim() || source?.yp_currently_playing?.trim() || NOW_PLAYING_PLACEHOLDER;
       console.log('Now playing metadata received:', nextTitle);
       setNowPlaying(nextTitle);
+
+      // Update Control Center / Lock Screen Now Playing info
+      if (Platform.OS === 'ios') {
+        updateNowPlaying(nextTitle, 'Lingewaard FM', true);
+      }
     } catch (error) {
       console.error('Failed to fetch now playing metadata:', error);
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
@@ -222,6 +227,11 @@ export default function RadioPlayer() {
 
       soundRef.current = sound;
       console.log('Audio.Sound created and playing - should appear in Control Center / AirPlay');
+
+      // Set initial Now Playing info for Control Center / AirPlay
+      if (Platform.OS === 'ios') {
+        updateNowPlaying(nowPlaying || 'Live uitzending', 'Lingewaard FM', true);
+      }
     } catch (error) {
       console.error('Failed to start stream:', error);
       if (!isUnmountedRef.current) {
@@ -229,7 +239,7 @@ export default function RadioPlayer() {
         setErrorMessage('Kan stream niet laden');
       }
     }
-  }, [isMuted, onPlaybackStatusUpdate]);
+  }, [isMuted, nowPlaying, onPlaybackStatusUpdate]);
 
   const stopStream = useCallback(async () => {
     try {
@@ -244,6 +254,11 @@ export default function RadioPlayer() {
     } finally {
       setPlayerState('idle');
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
+
+      // Clear Control Center Now Playing info
+      if (Platform.OS === 'ios') {
+        clearNowPlaying();
+      }
     }
   }, []);
 
@@ -343,23 +358,15 @@ export default function RadioPlayer() {
             <Text style={styles.liveText}>LIVE</Text>
           </Animated.View>
 
-          {playerState === 'playing' && Platform.OS === 'ios' && (
-            <TouchableOpacity
-              style={styles.airplayHint}
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                Alert.alert(
-                  'AirPlay',
-                  'Om via AirPlay te luisteren:\n\n1. Open het Bedieningspaneel (veeg van rechtsboven naar beneden)\n2. Houd het muziekblok ingedrukt\n3. Tik op het AirPlay icoon\n4. Kies je AirPlay speaker\n\nLingewaard FM zou zichtbaar moeten zijn in het Bedieningspaneel.',
-                  [{ text: 'Begrepen', style: 'default' }]
-                );
-              }}
-              activeOpacity={0.7}
-              testID="airplay-button"
-            >
-              <Airplay color={Colors.textMuted} size={16} />
+          {Platform.OS === 'ios' && (
+            <View style={styles.airplayHint} testID="airplay-button">
+              <AirPlayButton
+                style={styles.airplayNativeButton}
+                tintColor={Colors.textSecondary}
+                activeTintColor={Colors.accent}
+              />
               <Text style={styles.airplayText}>AirPlay</Text>
-            </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -526,6 +533,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     gap: 5,
+  },
+  airplayNativeButton: {
+    width: 24,
+    height: 24,
   },
   airplayText: {
     color: Colors.textMuted,
