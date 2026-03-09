@@ -68,9 +68,9 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       if (isSetup) return;
       try {
         await TrackPlayer.setupPlayer({
-          maxBuffer: 50,       // 50s max buffer — helps AirPlay/Sonos stability
-          minBuffer: 15,       // 15s min buffer before playback can start
-          playBuffer: 2.5,     // Start playing after 2.5s buffered
+          maxBuffer: 30,       // 30s max buffer — enough for AirPlay stability
+          minBuffer: 3,        // 3s min buffer — fast start, won't stall
+          playBuffer: 1,       // Start playing after 1s buffered
           backBuffer: 0,       // No back buffer needed for live streams
           waitForBuffer: true,  // Wait for sufficient buffer before playing
         });
