@@ -59,7 +59,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
   if (nativePlayerModule) return nativePlayerModule;
 
   const TrackPlayer = (await import('react-native-track-player')).default;
-  const { Capability, AppKilledPlaybackBehavior } = await import('react-native-track-player');
+  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions } = await import('react-native-track-player');
 
   let isSetup = false;
 
@@ -68,11 +68,13 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       if (isSetup) return;
       try {
         await TrackPlayer.setupPlayer({
-          maxBuffer: 30,       // 30s max buffer — enough for AirPlay stability
-          minBuffer: 3,        // 3s min buffer — fast start, won't stall
-          playBuffer: 1,       // Start playing after 1s buffered
-          backBuffer: 0,       // No back buffer needed for live streams
-          waitForBuffer: true,  // Wait for sufficient buffer before playing
+          maxBuffer: 5,          // Small buffer — live stream doesn't need large buffer
+          minBuffer: 2,          // Start buffering threshold
+          playBuffer: 1,         // Start playing after just 1s
+          backBuffer: 0,         // No back buffer for live streams
+          waitForBuffer: false,  // KEY: Don't wait for buffer — start playback immediately
+          autoHandleInterruptions: true, // Let TrackPlayer handle AirPlay interruptions
+          iosCategoryOptions: [IOSCategoryOptions.AllowAirPlay, IOSCategoryOptions.AllowBluetooth, IOSCategoryOptions.AllowBluetoothA2DP],
         });
         await TrackPlayer.updateOptions({
           capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
@@ -82,14 +84,13 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           },
         });
         isSetup = true;
-        console.log('TrackPlayer setup complete with AirPlay-optimized buffering');
+        console.log('TrackPlayer setup complete — instant start, AirPlay optimized');
       } catch (error) {
         console.error('TrackPlayer setup failed:', error);
       }
     },
     play: async (url: string, title: string, artist: string, artwork?: string) => {
-      await TrackPlayer.reset();
-      await TrackPlayer.add({
+      await TrackPlayer.load({
         url,
         title,
         artist,
