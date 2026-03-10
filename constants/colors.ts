@@ -1,6 +1,6 @@
 export default {
   background: '#7898bf',
-  surface: '#13131A',
+  surface: '#7898bf',
   surfaceLight: '#1C1C26',
   surfaceBorder: '#2A2A38',
   gradientStart: '#9B59B6',
