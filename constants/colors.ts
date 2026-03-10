@@ -1,9 +1,9 @@
 export default {
   background: '#7898bf',
-  surface: '#7898bf',
-  surfaceLight: '#7898bf',
+  surface: '#13131A',
+  surfaceLight: '#1C1C26',
   surfaceBorder: '#2A2A38',
-  gradientStart: '#7898bf',
+  gradientStart: '#9B59B6',
   gradientMid: '#5B8DEF',
   gradientEnd: '#2EC4B6',
   text: '#FFFFFF',
@@ -16,3 +16,4 @@ export default {
   whatsapp: '#25D366',
   whatsappDark: '#1DA851',
 };
+
