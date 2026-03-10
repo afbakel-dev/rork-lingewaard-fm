@@ -59,7 +59,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
   if (nativePlayerModule) return nativePlayerModule;
 
   const TrackPlayer = (await import('react-native-track-player')).default;
-  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions } = await import('react-native-track-player');
+  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, PitchAlgorithm } = await import('react-native-track-player');
 
   let isSetup = false;
 
@@ -68,12 +68,12 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       if (isSetup) return;
       try {
         await TrackPlayer.setupPlayer({
-          maxBuffer: 5,          // Small buffer — live stream doesn't need large buffer
-          minBuffer: 2,          // Start buffering threshold
-          playBuffer: 1,         // Start playing after just 1s
+          maxBuffer: 2,          // Minimal buffer — live stream, start ASAP
+          minBuffer: 1,          // Bare minimum before buffering kicks in
+          playBuffer: 1,         // Start playing after 1s
           backBuffer: 0,         // No back buffer for live streams
-          waitForBuffer: false,  // KEY: Don't wait for buffer — start playback immediately
-          autoHandleInterruptions: true, // Let TrackPlayer handle AirPlay interruptions
+          waitForBuffer: false,  // Don't wait — start playback immediately
+          autoHandleInterruptions: true,
           iosCategoryOptions: [IOSCategoryOptions.AllowAirPlay, IOSCategoryOptions.AllowBluetooth, IOSCategoryOptions.AllowBluetoothA2DP],
         });
         await TrackPlayer.updateOptions({
@@ -84,7 +84,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           },
         });
         isSetup = true;
-        console.log('TrackPlayer setup complete — instant start, AirPlay optimized');
+        console.log('TrackPlayer setup complete — minimal buffer, AirPlay optimized');
       } catch (error) {
         console.error('TrackPlayer setup failed:', error);
       }
@@ -96,6 +96,8 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         artist,
         artwork: artwork || undefined,
         isLiveStream: true,
+        pitchAlgorithm: PitchAlgorithm.Linear,  // Lowest latency audio processing
+        headers: { 'Icy-MetaData': '0' },        // Skip inline metadata — faster initial parse
       });
       await TrackPlayer.play();
       console.log('TrackPlayer playing');

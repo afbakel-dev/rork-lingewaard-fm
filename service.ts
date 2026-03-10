@@ -1,4 +1,4 @@
-import TrackPlayer, { Event, State } from 'react-native-track-player';
+import TrackPlayer, { Event } from 'react-native-track-player';
 
 module.exports = async function () {
   // Remote control events (Control Center / Lock Screen / AirPlay)
@@ -6,13 +6,24 @@ module.exports = async function () {
   TrackPlayer.addEventListener(Event.RemotePause, () => TrackPlayer.pause());
   TrackPlayer.addEventListener(Event.RemoteStop, () => TrackPlayer.stop());
 
-  // Auto-retry on playback errors (helps with AirPlay/Sonos route changes)
+  // Fast resume on AirPlay/Sonos route changes
+  // When switching audio output, iOS briefly interrupts playback — resume immediately
+  TrackPlayer.addEventListener(Event.RemoteDuck, async (data) => {
+    if (data.paused && !data.permanent) {
+      try {
+        await TrackPlayer.play();
+      } catch (e) {
+        console.error('Duck resume failed:', e);
+      }
+    }
+  });
+
+  // Auto-retry on playback errors (AirPlay/Sonos route changes can cause errors)
   TrackPlayer.addEventListener(Event.PlaybackError, async (data) => {
-    console.log('Playback error, attempting recovery:', data);
+    console.log('Playback error, retrying:', data);
     try {
       const track = await TrackPlayer.getActiveTrack();
       if (track) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
         await TrackPlayer.retry();
       }
     } catch (error) {
