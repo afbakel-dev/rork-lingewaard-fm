@@ -1,9 +1,9 @@
 export default {
   background: '#7898bf',
   surface: '#7898bf',
-  surfaceLight: '#1C1C26',
+  surfaceLight: '#7898bf',
   surfaceBorder: '#2A2A38',
-  gradientStart: '#9B59B6',
+  gradientStart: '#7898bf',
   gradientMid: '#5B8DEF',
   gradientEnd: '#2EC4B6',
   text: '#FFFFFF',
