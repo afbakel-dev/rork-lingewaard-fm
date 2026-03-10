@@ -22,7 +22,7 @@ const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
 const WHATSAPP_NUMBER: string = '+31680160513';
 const LOGO_ARTWORK = require('@/assets/images/lingewaard-fm-logo.jpg');
-const NOW_PLAYING_PLACEHOLDER: string = 'Live uitzending';
+const NOW_PLAYING_PLACEHOLDER: string = 'Klik op play om te luisteren';
 
 type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -284,7 +284,7 @@ export default function RadioPlayer() {
         <View style={styles.header}>
           <Animated.View style={[styles.liveBadge, { opacity: liveOpacity }]}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+            <Text style={styles.liveText}>Live</Text>
           </Animated.View>
 
           {playerState === 'playing' && Platform.OS === 'ios' && (
@@ -385,7 +385,7 @@ export default function RadioPlayer() {
             <Radio color={Colors.accent} size={18} />
           </View>
           <View style={styles.nowPlayingContent}>
-            <Text style={styles.nowPlayingLabel}>Now playing</Text>
+            <Text style={styles.nowPlayingLabel}>Nou op Lingewaard FM:</Text>
             <Text style={styles.nowPlayingTitle} numberOfLines={2}>
               {isNowPlayingLoading && nowPlaying === NOW_PLAYING_PLACEHOLDER ? 'Bezig met laden...' : nowPlaying}
             </Text>
