@@ -385,7 +385,7 @@ export default function RadioPlayer() {
             <Radio color={Colors.accent} size={18} />
           </View>
           <View style={styles.nowPlayingContent}>
-            <Text style={styles.nowPlayingLabel}>Nou op Lingewaard FM:</Text>
+            <Text style={styles.nowPlayingLabel}>Nu op Lingewaard FM:</Text>
             <Text style={styles.nowPlayingTitle} numberOfLines={2}>
               {isNowPlayingLoading && nowPlaying === NOW_PLAYING_PLACEHOLDER ? 'Bezig met laden...' : nowPlaying}
             </Text>
