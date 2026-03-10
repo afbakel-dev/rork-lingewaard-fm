@@ -1,5 +1,5 @@
 export default {
-  background: '#0A0A0F',
+  background: '#7898bf',
   surface: '#13131A',
   surfaceLight: '#1C1C26',
   surfaceBorder: '#2A2A38',
