@@ -20,7 +20,7 @@ import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
 
 const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
-const WHATSAPP_NUMBER: string = '+31644801621d';
+const WHATSAPP_NUMBER: string = '+31644801621';
 const LOGO_ARTWORK = require('@/assets/images/lingewaard-fm-logo.jpg');
 const NOW_PLAYING_PLACEHOLDER: string = 'Klik op play om te luisteren';
 
