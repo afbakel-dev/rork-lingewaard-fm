@@ -38,7 +38,9 @@ function withAirPlayOptimize(config) {
     }
 
     // Add audio session configuration in didFinishLaunchingWithOptions
-    // This runs BEFORE react-native-track-player sets up, so the policy persists
+    // Only set category + policy here. Do NOT call setActive(true) — that would
+    // immediately route to the last AirPlay device (Sonos) before the user presses play.
+    // The player will activate the session when playback starts.
     const audioSessionCode = `
     // AirPlay optimization: set longFormAudio policy for fast Sonos/AirPlay startup
     do {
@@ -48,7 +50,6 @@ function withAirPlayOptimize(config) {
         policy: .longFormAudio,
         options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
       )
-      try AVAudioSession.sharedInstance().setActive(true)
     } catch {
       print("AirPlay audio session setup failed: \\(error)")
     }
