@@ -3,14 +3,14 @@ const { withAppDelegate, withInfoPlist } = require('@expo/config-plugins');
 /**
  * Expo config plugin that optimizes iOS audio session for AirPlay streaming.
  *
- * Sets AVAudioSession route sharing policy to .longFormAudio, which tells iOS
- * this app streams long-form content (like radio). This significantly reduces
- * AirPlay startup latency to devices like Sonos speakers.
+ * 1. Sets AVAudioSession route sharing policy to .longFormAudio
+ * 2. Adds a native interruption observer that re-activates the audio session
+ *    after screen lock / phone calls / other interruptions — this runs at the
+ *    native level so it works even when the JS thread is suspended.
  */
 function withAirPlayOptimize(config) {
-  // Step 1: Add AVRoutePickerView usage description to Info.plist (optional but good practice)
+  // Step 1: Ensure background audio mode in Info.plist
   config = withInfoPlist(config, (config) => {
-    // Ensure background audio mode is set
     if (!config.modResults.UIBackgroundModes) {
       config.modResults.UIBackgroundModes = [];
     }
@@ -20,7 +20,7 @@ function withAirPlayOptimize(config) {
     return config;
   });
 
-  // Step 2: Modify AppDelegate to configure audio session with longFormAudio policy
+  // Step 2: Modify AppDelegate with audio session setup + native interruption handler
   config = withAppDelegate(config, (config) => {
     const contents = config.modResults.contents;
 
@@ -37,12 +37,12 @@ function withAirPlayOptimize(config) {
       );
     }
 
-    // Add audio session configuration in didFinishLaunchingWithOptions
-    // Only set category + policy here. Do NOT call setActive(true) — that would
-    // immediately route to the last AirPlay device (Sonos) before the user presses play.
-    // The player will activate the session when playback starts.
+    // Native audio session setup + interruption handler
+    // This runs at the native Objective-C/Swift level, NOT in JS,
+    // so it works even when the screen is locked and JS is suspended.
     const audioSessionCode = `
-    // AirPlay optimization: set longFormAudio policy for fast Sonos/AirPlay startup
+    // === AirPlay / Background Audio Optimization ===
+    // Set longFormAudio policy for fast AirPlay routing to Sonos
     do {
       try AVAudioSession.sharedInstance().setCategory(
         .playback,
@@ -52,6 +52,45 @@ function withAirPlayOptimize(config) {
       )
     } catch {
       print("AirPlay audio session setup failed: \\(error)")
+    }
+
+    // Native interruption observer — keeps audio alive through screen lock
+    // When iOS interrupts the audio (screen lock, phone call, Siri, etc.),
+    // this handler re-activates the session so playback continues.
+    NotificationCenter.default.addObserver(
+      forName: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance(),
+      queue: .main
+    ) { notification in
+      guard let userInfo = notification.userInfo,
+            let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+        return
+      }
+      if type == .ended {
+        // Interruption ended (screen unlocked, call ended, etc.)
+        // Re-activate the audio session so playback can continue
+        do {
+          try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+          print("Audio session re-activated after interruption")
+        } catch {
+          print("Failed to re-activate audio session: \\(error)")
+        }
+      }
+    }
+
+    // Also observe route changes (AirPlay device connect/disconnect)
+    NotificationCenter.default.addObserver(
+      forName: AVAudioSession.routeChangeNotification,
+      object: AVAudioSession.sharedInstance(),
+      queue: .main
+    ) { notification in
+      // Ensure audio session stays active after route changes
+      do {
+        try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+      } catch {
+        print("Failed to re-activate after route change: \\(error)")
+      }
     }
 `;
 
