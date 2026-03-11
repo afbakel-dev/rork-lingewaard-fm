@@ -60,6 +60,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
 
   const TrackPlayer = (await import('react-native-track-player')).default;
   const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions } = await import('react-native-track-player');
+  const { Audio, InterruptionModeIOS } = await import('expo-av');
 
   let isSetup = false;
 
@@ -67,13 +68,21 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     setup: async () => {
       if (isSetup) return;
       try {
+        // CRITICAL: Tell iOS this app needs background audio
+        // This configures AVAudioSession at the Expo framework level
+        await Audio.setAudioModeAsync({
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        });
+
         await TrackPlayer.setupPlayer({
           maxBuffer: 10,         // 10s buffer — enough to survive network hiccups
           minBuffer: 3,          // Rebuffer when below 3s
           playBuffer: 1,         // Start playing after just 1s buffered
           backBuffer: 0,         // No back buffer for live streams
           waitForBuffer: false,  // Don't wait — start playback immediately
-          autoHandleInterruptions: true,
+          autoHandleInterruptions: false, // Let our native handler manage interruptions
           iosCategoryOptions: [IOSCategoryOptions.AllowAirPlay, IOSCategoryOptions.AllowBluetooth, IOSCategoryOptions.AllowBluetoothA2DP],
         });
         await TrackPlayer.updateOptions({
