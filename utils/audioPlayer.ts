@@ -59,7 +59,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
   if (nativePlayerModule) return nativePlayerModule;
 
   const TrackPlayer = (await import('react-native-track-player')).default;
-  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, PitchAlgorithm } = await import('react-native-track-player');
+  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions } = await import('react-native-track-player');
 
   let isSetup = false;
 
@@ -90,14 +90,13 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       }
     },
     play: async (url: string, title: string, artist: string, artwork?: string) => {
-      await TrackPlayer.load({
+      await TrackPlayer.reset();
+      await TrackPlayer.add({
         url,
         title,
         artist,
         artwork: artwork || undefined,
         isLiveStream: true,
-        pitchAlgorithm: PitchAlgorithm.Linear,  // Lowest latency audio processing
-        headers: { 'Icy-MetaData': '0' },        // Skip inline metadata — faster initial parse
       });
       await TrackPlayer.play();
       console.log('TrackPlayer playing');
