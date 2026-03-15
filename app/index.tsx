@@ -10,6 +10,8 @@ import {
   Image,
   Platform,
   Alert,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,6 +49,8 @@ export default function RadioPlayer() {
   const previousVolumeRef = useRef<number>(1.0);
   const audioPlayerRef = useRef<AudioPlayerAPI | null>(null);
 
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const isInBackgroundRef = useRef<boolean>(false);
   const glowAnim = useRef(new Animated.Value(0.3)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const liveOpacity = useRef(new Animated.Value(1)).current;
@@ -63,6 +67,61 @@ export default function RadioPlayer() {
       console.log('Audio player initialized');
     });
   }, []);
+
+  const syncPlayerState = useCallback(async () => {
+    if (Platform.OS === 'web') return;
+    try {
+      const TrackPlayer = (await import('react-native-track-player')).default;
+      const trackPlayerModule = await import('react-native-track-player');
+      const PlaybackState = trackPlayerModule.State;
+      const playbackInfo = await TrackPlayer.getPlaybackState();
+      const currentState = playbackInfo.state;
+      console.log('[AppState] TrackPlayer state on resume:', currentState);
+
+      const isActive = currentState === PlaybackState.Playing
+        || currentState === PlaybackState.Buffering
+        || currentState === PlaybackState.Loading;
+      const isPaused = currentState === PlaybackState.Paused;
+      const isStopped = currentState === PlaybackState.Stopped
+        || currentState === PlaybackState.None;
+
+      if (isActive) {
+        if (playerState !== 'playing' && playerState !== 'loading') {
+          console.log('[AppState] Restoring UI to playing state');
+          setPlayerState('playing');
+        }
+      } else if (isPaused) {
+        setPlayerState('paused');
+      } else if (isStopped) {
+        setPlayerState('idle');
+        setNowPlaying(NOW_PLAYING_PLACEHOLDER);
+      }
+    } catch (error) {
+      console.error('[AppState] Failed to sync player state:', error);
+    }
+  }, [playerState]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      const wasInBackground = appStateRef.current.match(/inactive|background/);
+      const isNowActive = nextAppState === 'active';
+
+      console.log('[AppState] Transition:', appStateRef.current, '->', nextAppState);
+
+      if (wasInBackground && isNowActive) {
+        console.log('[AppState] App returned to foreground');
+        isInBackgroundRef.current = false;
+        void syncPlayerState();
+      } else if (nextAppState.match(/inactive|background/)) {
+        console.log('[AppState] App going to background');
+        isInBackgroundRef.current = true;
+      }
+
+      appStateRef.current = nextAppState;
+    });
+
+    return () => subscription.remove();
+  }, [syncPlayerState]);
 
   useEffect(() => {
     const liveBlink = Animated.loop(
@@ -175,7 +234,7 @@ export default function RadioPlayer() {
   const pauseStream = useCallback(async () => {
     try {
       console.log('Pausing stream...');
-      await audioPlayerRef.current?.pause();
+      await audioPlayerRef.current?.stop();
     } catch (error) {
       console.error('Failed to pause stream:', error);
     } finally {
@@ -237,7 +296,11 @@ export default function RadioPlayer() {
     if (playerState === 'playing') {
       void fetchNowPlaying();
       intervalId = setInterval(() => {
-        void fetchNowPlaying();
+        if (!isInBackgroundRef.current) {
+          void fetchNowPlaying();
+        } else {
+          console.log('[NowPlaying] Skipping fetch — app is in background');
+        }
       }, 15000);
     }
 
