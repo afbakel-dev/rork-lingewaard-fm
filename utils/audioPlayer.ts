@@ -66,8 +66,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
   if (nativePlayerModule) return nativePlayerModule;
 
   const TrackPlayer = (await import('react-native-track-player')).default;
-  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions } = await import('react-native-track-player');
-  const { Audio, InterruptionModeIOS } = await import('expo-av');
+  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, IOSCategory, IOSCategoryMode } = await import('react-native-track-player');
 
   let isSetup = false;
 
@@ -75,22 +74,20 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     setup: async () => {
       if (isSetup) return;
       try {
-        // CRITICAL: Tell iOS this app needs background audio
-        // This configures AVAudioSession at the Expo framework level
-        await Audio.setAudioModeAsync({
-          staysActiveInBackground: true,
-          playsInSilentModeIOS: true,
-          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        });
-
         await TrackPlayer.setupPlayer({
-          maxBuffer: 10,         // 10s buffer — enough to survive network hiccups
-          minBuffer: 3,          // Rebuffer when below 3s
-          playBuffer: 1,         // Start playing after just 1s buffered
-          backBuffer: 0,         // No back buffer for live streams
-          waitForBuffer: false,  // Don't wait — start playback immediately
+          maxBuffer: 10,
+          minBuffer: 3,
+          playBuffer: 1,
+          backBuffer: 0,
+          waitForBuffer: false,
           autoHandleInterruptions: true,
-          iosCategoryOptions: [IOSCategoryOptions.AllowAirPlay, IOSCategoryOptions.AllowBluetooth, IOSCategoryOptions.AllowBluetoothA2DP],
+          iosCategory: IOSCategory.Playback,
+          iosCategoryMode: IOSCategoryMode.SpokenAudio,
+          iosCategoryOptions: [
+            IOSCategoryOptions.AllowAirPlay,
+            IOSCategoryOptions.AllowBluetooth,
+            IOSCategoryOptions.AllowBluetoothA2DP,
+          ],
         });
         await TrackPlayer.updateOptions({
           capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
@@ -98,9 +95,10 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
           },
+          progressUpdateEventInterval: 10,
         });
         isSetup = true;
-        console.log('TrackPlayer setup complete — minimal buffer, AirPlay optimized');
+        console.log('TrackPlayer setup complete — background audio configured');
       } catch (error) {
         console.error('TrackPlayer setup failed:', error);
       }
