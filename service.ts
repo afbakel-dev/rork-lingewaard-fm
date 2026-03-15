@@ -1,4 +1,10 @@
-import TrackPlayer, { Event, State } from 'react-native-track-player';
+import TrackPlayer, { Event, State as TrackState } from 'react-native-track-player';
+
+const PLAYING = TrackState.Playing;
+const PAUSED = TrackState.Paused;
+const STOPPED = TrackState.Stopped;
+const ERROR = TrackState.Error;
+const READY = TrackState.Ready;
 
 module.exports = async function () {
   // Remote control events (Control Center / Lock Screen / AirPlay)
@@ -19,20 +25,55 @@ module.exports = async function () {
 
   // Auto-recover from unexpected stops/buffering stalls
   // Live streams can stall — this restarts playback automatically
+  let wasPlayingBeforeInterruption = false;
+
   TrackPlayer.addEventListener(Event.PlaybackState, async (data) => {
-    if (data.state === State.Ready || data.state === State.Stopped || data.state === State.Error) {
+    console.log('PlaybackState changed:', data.state);
+
+    if (data.state === PLAYING) {
+      wasPlayingBeforeInterruption = true;
+    }
+
+    if (data.state === PAUSED) {
       const track = await TrackPlayer.getActiveTrack();
-      if (track) {
-        // Wait briefly to see if it's a transient state
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (track && wasPlayingBeforeInterruption) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
         const currentState = (await TrackPlayer.getPlaybackState()).state;
-        if (currentState === State.Ready || currentState === State.Stopped || currentState === State.Error) {
+        if (currentState === PAUSED) {
+          try {
+            console.log('Auto-resuming after interruption (was playing)');
+            await TrackPlayer.play();
+          } catch (error) {
+            console.error('Auto-resume failed:', error);
+          }
+        }
+      }
+    }
+
+    if (data.state === STOPPED || data.state === ERROR) {
+      const track = await TrackPlayer.getActiveTrack();
+      if (track && wasPlayingBeforeInterruption) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const currentState = (await TrackPlayer.getPlaybackState()).state;
+        if (currentState === STOPPED || currentState === ERROR) {
           try {
             console.log('Auto-recovering from state:', currentState);
             await TrackPlayer.play();
           } catch (error) {
             console.error('Auto-recovery failed:', error);
           }
+        }
+      }
+    }
+
+    if (data.state === READY) {
+      const track = await TrackPlayer.getActiveTrack();
+      if (track && wasPlayingBeforeInterruption) {
+        try {
+          console.log('Auto-playing after Ready state');
+          await TrackPlayer.play();
+        } catch (error) {
+          console.error('Auto-play on Ready failed:', error);
         }
       }
     }

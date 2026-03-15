@@ -172,12 +172,12 @@ export default function RadioPlayer() {
     }
   }, []);
 
-  const stopStream = useCallback(async () => {
+  const pauseStream = useCallback(async () => {
     try {
-      console.log('Stopping stream...');
-      await audioPlayerRef.current?.stop();
+      console.log('Pausing stream...');
+      await audioPlayerRef.current?.pause();
     } catch (error) {
-      console.error('Failed to stop stream:', error);
+      console.error('Failed to pause stream:', error);
     } finally {
       setPlayerState('idle');
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
@@ -193,11 +193,11 @@ export default function RadioPlayer() {
     ]).start();
 
     if (playerState === 'playing') {
-      void stopStream();
+      void pauseStream();
     } else if (playerState !== 'loading') {
       void startStream();
     }
-  }, [playerState, startStream, stopStream, buttonScale]);
+  }, [playerState, startStream, pauseStream, buttonScale]);
 
   const toggleMute = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

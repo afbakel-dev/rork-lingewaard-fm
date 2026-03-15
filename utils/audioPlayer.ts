@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 export interface AudioPlayerAPI {
   setup: () => Promise<void>;
   play: (url: string, title: string, artist: string, artwork?: string) => Promise<void>;
+  pause: () => Promise<void>;
   stop: () => Promise<void>;
   setVolume: (volume: number) => Promise<void>;
   getVolume: () => Promise<number>;
@@ -30,6 +31,12 @@ const WebAudioPlayer: AudioPlayerAPI = {
       console.error('Web audio play failed:', error);
       throw error;
     }
+  },
+  pause: async () => {
+    if (webAudio) {
+      webAudio.pause();
+    }
+    console.log('Web audio paused');
   },
   stop: async () => {
     if (webAudio) {
@@ -82,7 +89,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           playBuffer: 1,         // Start playing after just 1s buffered
           backBuffer: 0,         // No back buffer for live streams
           waitForBuffer: false,  // Don't wait — start playback immediately
-          autoHandleInterruptions: false, // Let our native handler manage interruptions
+          autoHandleInterruptions: true,
           iosCategoryOptions: [IOSCategoryOptions.AllowAirPlay, IOSCategoryOptions.AllowBluetooth, IOSCategoryOptions.AllowBluetoothA2DP],
         });
         await TrackPlayer.updateOptions({
@@ -109,6 +116,10 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       });
       await TrackPlayer.play();
       console.log('TrackPlayer playing');
+    },
+    pause: async () => {
+      await TrackPlayer.pause();
+      console.log('TrackPlayer paused');
     },
     stop: async () => {
       await TrackPlayer.reset();
