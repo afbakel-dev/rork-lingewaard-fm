@@ -84,8 +84,8 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         });
 
         await TrackPlayer.setupPlayer({
-          maxBuffer: 10,         // 10s buffer — enough to survive network hiccups
-          minBuffer: 3,          // Rebuffer when below 3s
+          maxBuffer: 3,         // 10s buffer — enough to survive network hiccups
+          minBuffer: 2,          // Rebuffer when below 3s
           playBuffer: 1,         // Start playing after just 1s buffered
           backBuffer: 0,         // No back buffer for live streams
           waitForBuffer: false,  // Don't wait — start playback immediately
