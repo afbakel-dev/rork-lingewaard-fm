@@ -88,9 +88,9 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           playBuffer: 1,
           backBuffer: 0,
           waitForBuffer: false,
-          autoHandleInterruptions: false, // Don't pause on interruptions — keep playing!
+          autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
-          iosCategoryMode: IOSCategoryMode.Default, // Default mode for radio (not SpokenAudio)
+          iosCategoryMode: IOSCategoryMode.Default,
           iosCategoryOptions: [
             IOSCategoryOptions.AllowAirPlay,
             IOSCategoryOptions.AllowBluetooth,
