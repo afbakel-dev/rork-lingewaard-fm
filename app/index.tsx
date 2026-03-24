@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useKeepAwake } from 'expo-keep-awake';
 import Colors from '@/constants/colors';
 import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
 
@@ -40,6 +41,7 @@ interface IcecastResponse {
 }
 
 export default function RadioPlayer() {
+  useKeepAwake();
   const insets = useSafeAreaInsets();
   const [playerState, setPlayerState] = useState<PlayerState>('idle');
   const [isMuted, setIsMuted] = useState<boolean>(false);
