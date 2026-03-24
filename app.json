@@ -18,8 +18,7 @@
       "bundleIdentifier": "bibabc.lingewaardfm.bak",
       "infoPlist": {
         "UIBackgroundModes": [
-          "audio",
-          "fetch"
+          "audio"
         ]
       }
     },
