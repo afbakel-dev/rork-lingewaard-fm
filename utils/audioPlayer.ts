@@ -67,6 +67,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
 
   const TrackPlayer = (await import('react-native-track-player')).default;
   const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, IOSCategory, IOSCategoryMode } = await import('react-native-track-player');
+  const { Audio, InterruptionModeIOS } = await import('expo-av');
 
   let isSetup = false;
 
@@ -74,15 +75,22 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     setup: async () => {
       if (isSetup) return;
       try {
+        // CRITICAL: Tell iOS to keep this app alive in background for audio
+        await Audio.setAudioModeAsync({
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        });
+
         await TrackPlayer.setupPlayer({
           maxBuffer: 10,
           minBuffer: 3,
           playBuffer: 1,
           backBuffer: 0,
           waitForBuffer: false,
-          autoHandleInterruptions: true,
+          autoHandleInterruptions: false, // Don't pause on interruptions — keep playing!
           iosCategory: IOSCategory.Playback,
-          iosCategoryMode: IOSCategoryMode.SpokenAudio,
+          iosCategoryMode: IOSCategoryMode.Default, // Default mode for radio (not SpokenAudio)
           iosCategoryOptions: [
             IOSCategoryOptions.AllowAirPlay,
             IOSCategoryOptions.AllowBluetooth,
