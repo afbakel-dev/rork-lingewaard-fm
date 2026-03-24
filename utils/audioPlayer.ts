@@ -67,7 +67,6 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
 
   const TrackPlayer = (await import('react-native-track-player')).default;
   const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, IOSCategory, IOSCategoryMode } = await import('react-native-track-player');
-  const { Audio, InterruptionModeIOS } = await import('expo-av');
 
   let isSetup = false;
 
@@ -75,13 +74,8 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     setup: async () => {
       if (isSetup) return;
       try {
-        // CRITICAL: Tell iOS to keep this app alive in background for audio
-        await Audio.setAudioModeAsync({
-          staysActiveInBackground: true,
-          playsInSilentModeIOS: true,
-          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-        });
-
+        // Let react-native-track-player manage the audio session exclusively
+        // Do NOT use expo-av Audio.setAudioModeAsync — it conflicts with RNTP
         await TrackPlayer.setupPlayer({
           maxBuffer: 10,
           minBuffer: 3,
