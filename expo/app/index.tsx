@@ -17,14 +17,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Colors from '@/constants/colors';
 import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
 
-const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
-const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
-const WHATSAPP_NUMBER: string = '+31644801621';
+const STREAM_URL = 'https://totaal-streaming.de:8110/radio.mp3';
+const NOW_PLAYING_URL = 'https://totaal-streaming.de:8110/status-json.xsl';
+const WHATSAPP_NUMBER = '+31644801621';
 const LOGO_ARTWORK = require('@/assets/images/lingewaard-fm-logo.jpg');
-const NOW_PLAYING_PLACEHOLDER: string = 'Klik op play om te luisteren';
+const NOW_PLAYING_PLACEHOLDER = 'Klik op play om te luisteren';
 
 type PlayerState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -48,9 +49,9 @@ export default function RadioPlayer() {
   const [isNowPlayingLoading, setIsNowPlayingLoading] = useState<boolean>(false);
   const previousVolumeRef = useRef<number>(1.0);
   const audioPlayerRef = useRef<AudioPlayerAPI | null>(null);
-
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const isInBackgroundRef = useRef<boolean>(false);
+
   const glowAnim = useRef(new Animated.Value(0.3)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
   const liveOpacity = useRef(new Animated.Value(1)).current;
@@ -59,31 +60,41 @@ export default function RadioPlayer() {
   const waveAnim3 = useRef(new Animated.Value(0.7)).current;
   const waveAnim4 = useRef(new Animated.Value(0.4)).current;
   const waveAnim5 = useRef(new Animated.Value(0.6)).current;
+  const waveAnims = [waveAnim1, waveAnim2, waveAnim3, waveAnim4, waveAnim5];
 
   useEffect(() => {
     void getAudioPlayer().then((player) => {
       audioPlayerRef.current = player;
       void player.setup();
-      console.log('Audio player initialized');
+      console.log('[Init] Audio player initialized');
     });
   }, []);
+
+  useEffect(() => {
+    if (playerState === 'playing') {
+      if (Platform.OS !== 'web') {
+        void activateKeepAwakeAsync('radio-playing');
+        console.log('[KeepAwake] Activated');
+      }
+    } else {
+      if (Platform.OS !== 'web') {
+        void deactivateKeepAwake('radio-playing');
+        console.log('[KeepAwake] Deactivated');
+      }
+    }
+  }, [playerState]);
 
   const syncPlayerState = useCallback(async () => {
     if (Platform.OS === 'web') return;
     try {
       const TrackPlayer = (await import('react-native-track-player')).default;
-      const trackPlayerModule = await import('react-native-track-player');
-      const PlaybackState = trackPlayerModule.State;
       const playbackInfo = await TrackPlayer.getPlaybackState();
-      const currentState = playbackInfo.state;
+      const currentState = String(playbackInfo.state);
       console.log('[AppState] TrackPlayer state on resume:', currentState);
 
-      const isActive = currentState === PlaybackState.Playing
-        || currentState === PlaybackState.Buffering
-        || currentState === PlaybackState.Loading;
-      const isPaused = currentState === PlaybackState.Paused;
-      const isStopped = currentState === PlaybackState.Stopped
-        || currentState === PlaybackState.None;
+      const isActive = currentState === 'playing' || currentState === 'buffering' || currentState === 'loading';
+      const isPaused = currentState === 'paused';
+      const isStopped = currentState === 'stopped' || currentState === 'none';
 
       if (isActive) {
         if (playerState !== 'playing' && playerState !== 'loading') {
@@ -109,11 +120,9 @@ export default function RadioPlayer() {
       console.log('[AppState] Transition:', appStateRef.current, '->', nextAppState);
 
       if (wasInBackground && isNowActive) {
-        console.log('[AppState] App returned to foreground');
         isInBackgroundRef.current = false;
         void syncPlayerState();
       } else if (nextAppState.match(/inactive|background/)) {
-        console.log('[AppState] App going to background');
         isInBackgroundRef.current = true;
       }
 
@@ -136,23 +145,22 @@ export default function RadioPlayer() {
 
   useEffect(() => {
     if (playerState === 'playing') {
-      const createWaveAnimation = (anim: Animated.Value, minVal: number, maxVal: number, duration: number) =>
+      const createWave = (anim: Animated.Value, min: number, max: number, dur: number) =>
         Animated.loop(
           Animated.sequence([
-            Animated.timing(anim, { toValue: maxVal, duration, useNativeDriver: false }),
-            Animated.timing(anim, { toValue: minVal, duration, useNativeDriver: false }),
+            Animated.timing(anim, { toValue: max, duration: dur, useNativeDriver: false }),
+            Animated.timing(anim, { toValue: min, duration: dur, useNativeDriver: false }),
           ])
         );
 
       const animations = [
-        createWaveAnimation(waveAnim1, 0.2, 0.9, 400),
-        createWaveAnimation(waveAnim2, 0.3, 1.0, 350),
-        createWaveAnimation(waveAnim3, 0.1, 0.8, 500),
-        createWaveAnimation(waveAnim4, 0.4, 0.95, 300),
-        createWaveAnimation(waveAnim5, 0.2, 0.85, 450),
+        createWave(waveAnim1, 0.2, 0.9, 400),
+        createWave(waveAnim2, 0.3, 1.0, 350),
+        createWave(waveAnim3, 0.1, 0.8, 500),
+        createWave(waveAnim4, 0.4, 0.95, 300),
+        createWave(waveAnim5, 0.2, 0.85, 450),
       ];
-
-      animations.forEach(a => a.start());
+      animations.forEach((a) => a.start());
 
       const glow = Animated.loop(
         Animated.sequence([
@@ -163,7 +171,7 @@ export default function RadioPlayer() {
       glow.start();
 
       return () => {
-        animations.forEach(a => a.stop());
+        animations.forEach((a) => a.stop());
         glow.stop();
       };
     } else {
@@ -178,13 +186,9 @@ export default function RadioPlayer() {
 
   const fetchNowPlaying = useCallback(async () => {
     try {
-      console.log('Fetching now playing metadata from:', NOW_PLAYING_URL);
       setIsNowPlayingLoading(true);
       const response = await fetch(NOW_PLAYING_URL);
-
-      if (!response.ok) {
-        throw new Error(`Now playing request failed with status ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Status ${response.status}`);
 
       const payload = (await response.json()) as IcecastResponse;
       const source = Array.isArray(payload.icestats?.source)
@@ -192,7 +196,6 @@ export default function RadioPlayer() {
         : payload.icestats?.source;
 
       const nextTitle = source?.title?.trim() || source?.yp_currently_playing?.trim() || NOW_PLAYING_PLACEHOLDER;
-      console.log('Now playing metadata received:', nextTitle);
       setNowPlaying(nextTitle);
 
       if (audioPlayerRef.current) {
@@ -200,16 +203,25 @@ export default function RadioPlayer() {
         await audioPlayerRef.current.updateMetadata(nextTitle, 'Lingewaard FM', artworkUri);
       }
     } catch (error) {
-      console.error('Failed to fetch now playing metadata:', error);
+      console.error('[NowPlaying] Fetch failed:', error);
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
     } finally {
       setIsNowPlayingLoading(false);
     }
   }, []);
 
+  const setServiceUserStop = useCallback(async (value: boolean) => {
+    if (Platform.OS === 'web') return;
+    try {
+      const { setUserInitiatedStop } = await import('@/service');
+      setUserInitiatedStop(value);
+    } catch (e) {
+      console.log('[Service] Could not set userInitiatedStop:', e);
+    }
+  }, []);
+
   const startStream = useCallback(async () => {
     try {
-      console.log('Starting stream...');
       setPlayerState('loading');
       setErrorMessage('');
 
@@ -220,43 +232,44 @@ export default function RadioPlayer() {
         await p.setup();
       }
 
+      await setServiceUserStop(false);
+
       const artworkUri = Platform.OS !== 'web' ? Image.resolveAssetSource(LOGO_ARTWORK).uri : undefined;
       await audioPlayerRef.current!.play(STREAM_URL, 'Live uitzending', 'Lingewaard FM', artworkUri);
       setPlayerState('playing');
-      console.log('Stream started successfully');
+      console.log('[Player] Stream started');
     } catch (error) {
-      console.error('Failed to start stream:', error);
+      console.error('[Player] Failed to start stream:', error);
       setPlayerState('error');
       setErrorMessage('Kan stream niet laden');
     }
-  }, []);
+  }, [setServiceUserStop]);
 
-  const pauseStream = useCallback(async () => {
+  const stopStream = useCallback(async () => {
     try {
-      console.log('Pausing stream...');
+      await setServiceUserStop(true);
       await audioPlayerRef.current?.stop();
     } catch (error) {
-      console.error('Failed to pause stream:', error);
+      console.error('[Player] Failed to stop stream:', error);
     } finally {
       setPlayerState('idle');
       setNowPlaying(NOW_PLAYING_PLACEHOLDER);
     }
-  }, []);
+  }, [setServiceUserStop]);
 
   const togglePlay = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     Animated.sequence([
       Animated.timing(buttonScale, { toValue: 0.9, duration: 80, useNativeDriver: true }),
       Animated.timing(buttonScale, { toValue: 1, duration: 80, useNativeDriver: true }),
     ]).start();
 
     if (playerState === 'playing') {
-      void pauseStream();
+      void stopStream();
     } else if (playerState !== 'loading') {
       void startStream();
     }
-  }, [playerState, startStream, pauseStream, buttonScale]);
+  }, [playerState, startStream, stopStream, buttonScale]);
 
   const toggleMute = useCallback(async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -265,53 +278,36 @@ export default function RadioPlayer() {
     try {
       const player = audioPlayerRef.current;
       if (!player) return;
-
       if (newMuted) {
-        const currentVolume = await player.getVolume();
-        previousVolumeRef.current = currentVolume;
+        previousVolumeRef.current = await player.getVolume();
         await player.setVolume(0);
       } else {
         await player.setVolume(previousVolumeRef.current || 1.0);
       }
-      console.log('Mute toggled:', newMuted);
     } catch (error) {
-      console.error('Failed to toggle mute:', error);
+      console.error('[Player] Failed to toggle mute:', error);
     }
   }, [isMuted]);
 
   const openWhatsApp = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const message = encodeURIComponent('Hallo Lingewaard FM! ');
-    const url = WHATSAPP_NUMBER
-      ? `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`
-      : `https://wa.me/?text=${message}`;
-    Linking.openURL(url).catch((err) => {
-      console.error('Could not open WhatsApp:', err);
-    });
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
+    Linking.openURL(url).catch((err) => console.error('[WhatsApp] Open failed:', err));
   }, []);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
-
     if (playerState === 'playing') {
       void fetchNowPlaying();
       intervalId = setInterval(() => {
-        if (!isInBackgroundRef.current) {
-          void fetchNowPlaying();
-        } else {
-          console.log('[NowPlaying] Skipping fetch — app is in background');
-        }
+        if (!isInBackgroundRef.current) void fetchNowPlaying();
       }, 15000);
     }
-
     return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+      if (intervalId) clearInterval(intervalId);
     };
   }, [fetchNowPlaying, playerState]);
-
-  const waveAnims = [waveAnim1, waveAnim2, waveAnim3, waveAnim4, waveAnim5];
 
   const renderEqualizer = () => (
     <View style={styles.equalizerContainer}>
@@ -321,10 +317,7 @@ export default function RadioPlayer() {
           style={[
             styles.equalizerBar,
             {
-              height: anim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [4, 32],
-              }),
+              height: anim.interpolate({ inputRange: [0, 1], outputRange: [4, 32] }),
               backgroundColor: index % 2 === 0 ? Colors.gradientStart : Colors.gradientEnd,
             },
           ]}
@@ -335,11 +328,7 @@ export default function RadioPlayer() {
 
   return (
     <View style={styles.root}>
-      <LinearGradient
-        colors={['#0F0F18', '#0A0A0F', '#0D0D15']}
-        style={StyleSheet.absoluteFill}
-      />
-
+      <LinearGradient colors={['#0F0F18', '#0A0A0F', '#0D0D15']} style={StyleSheet.absoluteFill} />
       <View style={[styles.backgroundOrb, styles.orb1]} />
       <View style={[styles.backgroundOrb, styles.orb2]} />
 
@@ -372,7 +361,6 @@ export default function RadioPlayer() {
 
         <View style={styles.centerContent}>
           <Animated.View style={[styles.logoGlow, { opacity: glowAnim }]} />
-
           <View style={styles.logoContainer}>
             <Image
               source={require('@/assets/images/lingewaard-fm-logo-transparent.png')}
@@ -380,9 +368,7 @@ export default function RadioPlayer() {
               resizeMode="contain"
             />
           </View>
-
           <View style={styles.divider} />
-
           <Text style={styles.tagline}>Non-stop & Live Radio</Text>
 
           {playerState === 'playing' && renderEqualizer()}
@@ -391,34 +377,18 @@ export default function RadioPlayer() {
               <ActivityIndicator size="small" color={Colors.accent} />
             </View>
           )}
-          {(playerState === 'idle' || playerState === 'error') && (
-            <View style={styles.equalizerPlaceholder} />
-          )}
+          {(playerState === 'idle' || playerState === 'error') && <View style={styles.equalizerPlaceholder} />}
         </View>
 
         <View style={styles.controls}>
           {playerState === 'playing' && (
-            <TouchableOpacity
-              style={styles.muteButton}
-              onPress={toggleMute}
-              activeOpacity={0.7}
-              testID="mute-button"
-            >
-              {isMuted ? (
-                <VolumeX color={Colors.textSecondary} size={22} />
-              ) : (
-                <Volume2 color={Colors.textSecondary} size={22} />
-              )}
+            <TouchableOpacity style={styles.muteButton} onPress={toggleMute} activeOpacity={0.7} testID="mute-button">
+              {isMuted ? <VolumeX color={Colors.textSecondary} size={22} /> : <Volume2 color={Colors.textSecondary} size={22} />}
             </TouchableOpacity>
           )}
 
           <Animated.View style={[styles.playButtonOuter, { transform: [{ scale: buttonScale }] }]}>
-            <TouchableOpacity
-              onPress={togglePlay}
-              activeOpacity={0.8}
-              testID="play-button"
-              disabled={playerState === 'loading'}
-            >
+            <TouchableOpacity onPress={togglePlay} activeOpacity={0.8} testID="play-button" disabled={playerState === 'loading'}>
               <LinearGradient
                 colors={[Colors.gradientStart, Colors.gradientMid, Colors.gradientEnd]}
                 start={{ x: 0, y: 0 }}
@@ -437,10 +407,7 @@ export default function RadioPlayer() {
           </Animated.View>
 
           {playerState === 'playing' && <View style={styles.muteButtonPlaceholder} />}
-
-          {errorMessage ? (
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          ) : null}
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </View>
 
         <View style={styles.nowPlayingCard} testID="now-playing-bar">
@@ -455,12 +422,7 @@ export default function RadioPlayer() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.whatsappButton}
-          onPress={openWhatsApp}
-          activeOpacity={0.8}
-          testID="whatsapp-button"
-        >
+        <TouchableOpacity style={styles.whatsappButton} onPress={openWhatsApp} activeOpacity={0.8} testID="whatsapp-button">
           <MessageCircle color="#FFFFFF" size={20} fill="#FFFFFF" />
           <Text style={styles.whatsappText}>Stuur een bericht via WhatsApp</Text>
         </TouchableOpacity>

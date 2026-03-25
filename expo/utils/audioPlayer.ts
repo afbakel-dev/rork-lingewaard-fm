@@ -15,28 +15,21 @@ let webVolume = 1.0;
 
 const WebAudioPlayer: AudioPlayerAPI = {
   setup: async () => {
-    console.log('Web audio player setup');
+    console.log('[WebAudio] Setup complete');
   },
-  play: async (url: string, _title: string, _artist: string) => {
-    try {
-      if (webAudio) {
-        webAudio.pause();
-        webAudio.src = '';
-      }
-      webAudio = new Audio(url);
-      webAudio.volume = webVolume;
-      await webAudio.play();
-      console.log('Web audio playing:', url);
-    } catch (error) {
-      console.error('Web audio play failed:', error);
-      throw error;
-    }
-  },
-  pause: async () => {
+  play: async (url: string) => {
     if (webAudio) {
       webAudio.pause();
+      webAudio.src = '';
     }
-    console.log('Web audio paused');
+    webAudio = new Audio(url);
+    webAudio.volume = webVolume;
+    await webAudio.play();
+    console.log('[WebAudio] Playing:', url);
+  },
+  pause: async () => {
+    webAudio?.pause();
+    console.log('[WebAudio] Paused');
   },
   stop: async () => {
     if (webAudio) {
@@ -44,20 +37,14 @@ const WebAudioPlayer: AudioPlayerAPI = {
       webAudio.src = '';
       webAudio = null;
     }
-    console.log('Web audio stopped');
+    console.log('[WebAudio] Stopped');
   },
   setVolume: async (volume: number) => {
     webVolume = volume;
-    if (webAudio) {
-      webAudio.volume = volume;
-    }
+    if (webAudio) webAudio.volume = volume;
   },
-  getVolume: async () => {
-    return webVolume;
-  },
-  updateMetadata: async (_title: string, _artist: string, _artwork?: string) => {
-    // No-op on web
-  },
+  getVolume: async () => webVolume,
+  updateMetadata: async () => {},
 };
 
 let nativePlayerModule: AudioPlayerAPI | null = null;
@@ -66,7 +53,13 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
   if (nativePlayerModule) return nativePlayerModule;
 
   const TrackPlayer = (await import('react-native-track-player')).default;
-  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, IOSCategory, IOSCategoryMode } = await import('react-native-track-player');
+  const {
+    Capability,
+    AppKilledPlaybackBehavior,
+    IOSCategoryOptions,
+    IOSCategory,
+    IOSCategoryMode,
+  } = await import('react-native-track-player');
 
   let isSetup = false;
 
@@ -74,14 +67,12 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     setup: async () => {
       if (isSetup) return;
       try {
-        // Let react-native-track-player manage the audio session exclusively
-        // Do NOT use expo-av Audio.setAudioModeAsync — it conflicts with RNTP
         await TrackPlayer.setupPlayer({
-          maxBuffer: 10,
-          minBuffer: 3,
-          playBuffer: 1,
+          maxBuffer: 30,
+          minBuffer: 5,
+          playBuffer: 2,
           backBuffer: 0,
-          waitForBuffer: false,
+          waitForBuffer: true,
           autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
           iosCategoryMode: IOSCategoryMode.Default,
@@ -100,9 +91,9 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           progressUpdateEventInterval: 10,
         });
         isSetup = true;
-        console.log('TrackPlayer setup complete — background audio configured');
+        console.log('[TrackPlayer] Setup complete — background audio configured');
       } catch (error) {
-        console.error('TrackPlayer setup failed:', error);
+        console.error('[TrackPlayer] Setup failed:', error);
       }
     },
     play: async (url: string, title: string, artist: string, artwork?: string) => {
@@ -115,15 +106,15 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         isLiveStream: true,
       });
       await TrackPlayer.play();
-      console.log('TrackPlayer playing');
+      console.log('[TrackPlayer] Playing');
     },
     pause: async () => {
       await TrackPlayer.pause();
-      console.log('TrackPlayer paused');
+      console.log('[TrackPlayer] Paused');
     },
     stop: async () => {
       await TrackPlayer.reset();
-      console.log('TrackPlayer stopped');
+      console.log('[TrackPlayer] Stopped');
     },
     setVolume: async (volume: number) => {
       await TrackPlayer.setVolume(volume);
@@ -133,16 +124,12 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
     },
     updateMetadata: async (title: string, artist: string, artwork?: string) => {
       try {
-        await (TrackPlayer as any).updateNowPlayingMetadata({ title, artist, artwork });
-      } catch {
-        try {
-          const trackIndex = await TrackPlayer.getActiveTrackIndex();
-          if (trackIndex !== null && trackIndex !== undefined) {
-            await TrackPlayer.updateMetadataForTrack(trackIndex, { title, artist, artwork });
-          }
-        } catch (e2) {
-          console.error('Failed to update track metadata:', e2);
+        const trackIndex = await TrackPlayer.getActiveTrackIndex();
+        if (trackIndex !== null && trackIndex !== undefined) {
+          await TrackPlayer.updateMetadataForTrack(trackIndex, { title, artist, artwork });
         }
+      } catch (e) {
+        console.error('[TrackPlayer] Failed to update metadata:', e);
       }
     },
   };
@@ -151,8 +138,6 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
 }
 
 export async function getAudioPlayer(): Promise<AudioPlayerAPI> {
-  if (Platform.OS === 'web') {
-    return WebAudioPlayer;
-  }
+  if (Platform.OS === 'web') return WebAudioPlayer;
   return getNativePlayer();
 }
