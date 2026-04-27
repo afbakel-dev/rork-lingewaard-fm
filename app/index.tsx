@@ -17,8 +17,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Colors from '@/constants/colors';
 import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
+
+const KEEP_AWAKE_TAG = 'lingewaard-fm-playback';
 
 const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
@@ -289,6 +292,22 @@ export default function RadioPlayer() {
       console.error('Could not open WhatsApp:', err);
     });
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (playerState === 'playing' || playerState === 'loading') {
+      activateKeepAwakeAsync(KEEP_AWAKE_TAG)
+        .then(() => console.log('[KeepAwake] activated — preventing screen lock during AirPlay playback'))
+        .catch((err) => console.error('[KeepAwake] activate failed:', err));
+    } else {
+      try {
+        deactivateKeepAwake(KEEP_AWAKE_TAG);
+        console.log('[KeepAwake] deactivated');
+      } catch (err) {
+        console.error('[KeepAwake] deactivate failed:', err);
+      }
+    }
+  }, [playerState]);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
