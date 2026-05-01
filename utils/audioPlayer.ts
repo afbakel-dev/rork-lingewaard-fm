@@ -77,11 +77,11 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         // Let react-native-track-player manage the audio session exclusively
         // Do NOT use expo-av Audio.setAudioModeAsync — it conflicts with RNTP
         await TrackPlayer.setupPlayer({
-          maxBuffer: 10,
-          minBuffer: 3,
-          playBuffer: 1,
+          minBuffer: 30,
+          maxBuffer: 120,
+          playBuffer: 5,
           backBuffer: 0,
-          waitForBuffer: false,
+          waitForBuffer: true,
           autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
           iosCategoryMode: IOSCategoryMode.Default,
@@ -122,8 +122,8 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       console.log('TrackPlayer paused');
     },
     stop: async () => {
-      await TrackPlayer.reset();
-      console.log('TrackPlayer stopped');
+      await TrackPlayer.pause();
+      console.log('TrackPlayer stopped (paused to keep session alive)');
     },
     setVolume: async (volume: number) => {
       await TrackPlayer.setVolume(volume);

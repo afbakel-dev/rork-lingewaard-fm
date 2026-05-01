@@ -3,23 +3,70 @@ import TrackPlayer, { Event } from 'react-native-track-player';
 const PlaybackState = {
   Error: 'error' as const,
   Stopped: 'stopped' as const,
+  Ended: 'ended' as const,
+  None: 'none' as const,
+  Paused: 'paused' as const,
+  Playing: 'playing' as const,
 };
 
 module.exports = async function () {
   let lastUrl: string | undefined;
+  let userPaused = false;
+  let isRecovering = false;
+
+  const restartStream = async (reason: string): Promise<void> => {
+    if (isRecovering) {
+      console.log('[Service] Recovery already in progress, skipping (' + reason + ')');
+      return;
+    }
+    if (userPaused) {
+      console.log('[Service] User paused — not restarting (' + reason + ')');
+      return;
+    }
+    isRecovering = true;
+    try {
+      const track = await TrackPlayer.getActiveTrack();
+      const url = track?.url || lastUrl;
+      if (!url) {
+        console.log('[Service] No URL to restart (' + reason + ')');
+        return;
+      }
+      console.log('[Service] Restarting stream because: ' + reason);
+      const title = track?.title ?? 'Live uitzending';
+      const artist = track?.artist ?? 'Lingewaard FM';
+      const artwork = track?.artwork;
+      await TrackPlayer.reset();
+      await TrackPlayer.add({
+        url,
+        title,
+        artist,
+        artwork,
+        isLiveStream: true,
+      });
+      await TrackPlayer.play();
+      console.log('[Service] Stream restarted successfully');
+    } catch (error) {
+      console.error('[Service] restartStream failed:', error);
+    } finally {
+      isRecovering = false;
+    }
+  };
 
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
     console.log('[Service] RemotePlay received');
+    userPaused = false;
     void TrackPlayer.play();
   });
 
   TrackPlayer.addEventListener(Event.RemotePause, () => {
     console.log('[Service] RemotePause received');
+    userPaused = true;
     void TrackPlayer.pause();
   });
 
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
     console.log('[Service] RemoteStop received');
+    userPaused = true;
     void TrackPlayer.stop();
   });
 
@@ -37,10 +84,25 @@ module.exports = async function () {
   TrackPlayer.addEventListener(Event.PlaybackState, async (data) => {
     console.log('[Service] PlaybackState changed:', data.state);
 
-    if (data.state === PlaybackState.Error || data.state === PlaybackState.Stopped) {
-      const track = await TrackPlayer.getActiveTrack();
-      if (track?.url) {
-        lastUrl = track.url;
+    if (data.state === PlaybackState.Playing) {
+      userPaused = false;
+    }
+
+    const track = await TrackPlayer.getActiveTrack();
+    if (track?.url) {
+      lastUrl = track.url;
+    }
+
+    if (
+      data.state === PlaybackState.Ended ||
+      data.state === PlaybackState.Stopped ||
+      data.state === PlaybackState.None
+    ) {
+      if (!userPaused) {
+        console.log('[Service] Unexpected state ' + data.state + ' — recovering live stream');
+        setTimeout(() => {
+          void restartStream('state=' + data.state);
+        }, 1500);
       }
     }
   });
@@ -88,23 +150,7 @@ module.exports = async function () {
 
   TrackPlayer.addEventListener(Event.PlaybackQueueEnded, async () => {
     console.log('[Service] Queue ended on live stream — restarting');
-    const track = await TrackPlayer.getActiveTrack();
-    const url = track?.url || lastUrl;
-    if (url) {
-      try {
-        await TrackPlayer.reset();
-        await TrackPlayer.add({
-          url,
-          title: 'Live uitzending',
-          artist: 'Lingewaard FM',
-          isLiveStream: true,
-        });
-        await TrackPlayer.play();
-        console.log('[Service] Restarted after queue end');
-      } catch (error) {
-        console.error('[Service] Queue end recovery failed:', error);
-      }
-    }
+    await restartStream('queue-ended');
   });
 
   TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async (data) => {

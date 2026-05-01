@@ -224,7 +224,9 @@ export default function RadioPlayer() {
       }
 
       const artworkUri = Platform.OS !== 'web' ? Image.resolveAssetSource(LOGO_ARTWORK).uri : undefined;
-      await audioPlayerRef.current!.play(STREAM_URL, 'Live uitzending', 'Lingewaard FM', artworkUri);
+      const cacheBuster = Date.now();
+      const url = STREAM_URL.includes('?') ? `${STREAM_URL}&_=${cacheBuster}` : `${STREAM_URL}?_=${cacheBuster}`;
+      await audioPlayerRef.current!.play(url, 'Live uitzending', 'Lingewaard FM', artworkUri);
       setPlayerState('playing');
       console.log('Stream started successfully');
     } catch (error) {
