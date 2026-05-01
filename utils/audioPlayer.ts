@@ -98,7 +98,6 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           iosCategoryMode: IOSCategoryMode.Default,
           iosCategoryOptions: [
             IOSCategoryOptions.AllowAirPlay,
-            IOSCategoryOptions.AllowBluetooth,
             IOSCategoryOptions.AllowBluetoothA2DP,
           ],
         });

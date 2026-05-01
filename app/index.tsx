@@ -17,11 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Play, Pause, MessageCircle, Volume2, VolumeX, Radio, Airplay } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import Colors from '@/constants/colors';
 import { getAudioPlayer, type AudioPlayerAPI } from '@/utils/audioPlayer';
-
-const KEEP_AWAKE_TAG = 'lingewaard-fm-playback';
 
 const STREAM_URL: string = 'https://totaal-streaming.de:8110/radio.mp3';
 const NOW_PLAYING_URL: string = 'https://totaal-streaming.de:8110/status-json.xsl';
@@ -49,6 +46,7 @@ export default function RadioPlayer() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [nowPlaying, setNowPlaying] = useState<string>(NOW_PLAYING_PLACEHOLDER);
   const [isNowPlayingLoading, setIsNowPlayingLoading] = useState<boolean>(false);
+  const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(true);
   const previousVolumeRef = useRef<number>(1.0);
   const audioPlayerRef = useRef<AudioPlayerAPI | null>(null);
 
@@ -112,12 +110,14 @@ export default function RadioPlayer() {
       console.log('[AppState] Transition:', appStateRef.current, '->', nextAppState);
 
       if (wasInBackground && isNowActive) {
-        console.log('[AppState] App returned to foreground');
+        console.log('[AppState] App returned to foreground — re-enabling JS animations');
         isInBackgroundRef.current = false;
+        setAnimationsEnabled(true);
         void syncPlayerState();
       } else if (nextAppState.match(/inactive|background/)) {
-        console.log('[AppState] App going to background');
+        console.log('[AppState] App going to background — stopping JS-thread animations to avoid iOS watchdog kill');
         isInBackgroundRef.current = true;
+        setAnimationsEnabled(false);
       }
 
       appStateRef.current = nextAppState;
@@ -138,7 +138,7 @@ export default function RadioPlayer() {
   }, [liveOpacity]);
 
   useEffect(() => {
-    if (playerState === 'playing') {
+    if (playerState === 'playing' && animationsEnabled) {
       const createWaveAnimation = (anim: Animated.Value, minVal: number, maxVal: number, duration: number) =>
         Animated.loop(
           Animated.sequence([
@@ -177,7 +177,7 @@ export default function RadioPlayer() {
       waveAnim5.setValue(0.6);
       glowAnim.setValue(0.3);
     }
-  }, [playerState, waveAnim1, waveAnim2, waveAnim3, waveAnim4, waveAnim5, glowAnim]);
+  }, [playerState, animationsEnabled, waveAnim1, waveAnim2, waveAnim3, waveAnim4, waveAnim5, glowAnim]);
 
   const fetchNowPlaying = useCallback(async () => {
     try {
@@ -294,22 +294,6 @@ export default function RadioPlayer() {
       console.error('Could not open WhatsApp:', err);
     });
   }, []);
-
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    if (playerState === 'playing' || playerState === 'loading') {
-      activateKeepAwakeAsync(KEEP_AWAKE_TAG)
-        .then(() => console.log('[KeepAwake] activated — preventing screen lock during AirPlay playback'))
-        .catch((err) => console.error('[KeepAwake] activate failed:', err));
-    } else {
-      try {
-        deactivateKeepAwake(KEEP_AWAKE_TAG);
-        console.log('[KeepAwake] deactivated');
-      } catch (err) {
-        console.error('[KeepAwake] deactivate failed:', err);
-      }
-    }
-  }, [playerState]);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;

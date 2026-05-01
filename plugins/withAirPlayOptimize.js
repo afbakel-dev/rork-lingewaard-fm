@@ -52,7 +52,7 @@ function withAirPlayOptimize(config) {
         .playback,
         mode: .default,
         policy: .longFormAudio,
-        options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
+        options: [.allowAirPlay, .allowBluetoothA2DP]
       )
     } catch {
       print("AirPlay audio session category setup failed: \\(error)")
@@ -70,7 +70,7 @@ function withAirPlayOptimize(config) {
           .playback,
           mode: .default,
           policy: .longFormAudio,
-          options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
+          options: [.allowAirPlay, .allowBluetoothA2DP]
         )
       } catch {
         print("Failed to re-apply category after media services reset: \\(error)")
