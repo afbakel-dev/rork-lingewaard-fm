@@ -1,15 +1,23 @@
 const { withAppDelegate, withInfoPlist } = require('@expo/config-plugins');
 
 /**
- * Expo config plugin that optimizes iOS audio session for AirPlay streaming.
+ * Expo config plugin for iOS background audio + AirPlay.
  *
- * 1. Sets AVAudioSession route sharing policy to .longFormAudio
- * 2. Adds a native interruption observer that re-activates the audio session
- *    after screen lock / phone calls / other interruptions — this runs at the
- *    native level so it works even when the JS thread is suspended.
+ * IMPORTANT: We deliberately do NOT activate the audio session, run keep-alive
+ * timers, or re-activate on every route change. react-native-track-player owns
+ * the session lifecycle. Fighting it from native code (with invalid setActive
+ * options) was causing iOS to silently deactivate the session and terminate
+ * the app ~50s after screen lock.
+ *
+ * What this plugin does:
+ *   1. Adds UIBackgroundModes = ["audio"] to Info.plist
+ *   2. Sets the AVAudioSession route sharing policy to .longFormAudio so
+ *      AirPlay 2 sees us as a long-form audio app. This is configured ONCE
+ *      at launch and does NOT activate the session.
+ *   3. Adds a minimal interruption observer that re-asserts the route sharing
+ *      policy after media services reset (rare but fatal if unhandled).
  */
 function withAirPlayOptimize(config) {
-  // Step 1: Ensure background audio mode in Info.plist
   config = withInfoPlist(config, (config) => {
     if (!config.modResults.UIBackgroundModes) {
       config.modResults.UIBackgroundModes = [];
@@ -20,16 +28,13 @@ function withAirPlayOptimize(config) {
     return config;
   });
 
-  // Step 2: Modify AppDelegate with audio session setup + native interruption handler
   config = withAppDelegate(config, (config) => {
     const contents = config.modResults.contents;
 
-    // Check if already modified
     if (contents.includes('longFormAudio')) {
       return config;
     }
 
-    // Add AVFoundation import
     if (contents.includes('import UIKit') && !contents.includes('import AVFoundation')) {
       config.modResults.contents = config.modResults.contents.replace(
         'import UIKit',
@@ -37,12 +42,11 @@ function withAirPlayOptimize(config) {
       );
     }
 
-    // Native audio session setup + interruption handler
-    // This runs at the native Objective-C/Swift level, NOT in JS,
-    // so it works even when the screen is locked and JS is suspended.
     const audioSessionCode = `
-    // === AirPlay / Background Audio Optimization ===
-    // Set longFormAudio policy for fast AirPlay routing to Sonos
+    // === AirPlay long-form audio policy (no activation) ===
+    // Configure the category + longFormAudio policy so AirPlay 2 routes us
+    // correctly. Do NOT call setActive here — react-native-track-player will
+    // activate the session when the user taps play.
     do {
       try AVAudioSession.sharedInstance().setCategory(
         .playback,
@@ -51,57 +55,16 @@ function withAirPlayOptimize(config) {
         options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
       )
     } catch {
-      print("AirPlay audio session setup failed: \\(error)")
+      print("AirPlay audio session category setup failed: \\(error)")
     }
 
-    // Native interruption observer — keeps audio alive through screen lock
-    // When iOS interrupts the audio (screen lock, phone call, Siri, etc.),
-    // this handler re-activates the session so playback continues.
-    NotificationCenter.default.addObserver(
-      forName: AVAudioSession.interruptionNotification,
-      object: AVAudioSession.sharedInstance(),
-      queue: .main
-    ) { notification in
-      guard let userInfo = notification.userInfo,
-            let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-            let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
-        return
-      }
-      if type == .ended {
-        // Interruption ended (screen unlocked, call ended, etc.)
-        // Re-activate the audio session so playback can continue
-        do {
-          try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
-          print("Audio session re-activated after interruption")
-        } catch {
-          print("Failed to re-activate audio session: \\(error)")
-        }
-      }
-    }
-
-    // Also observe route changes (AirPlay device connect/disconnect)
-    NotificationCenter.default.addObserver(
-      forName: AVAudioSession.routeChangeNotification,
-      object: AVAudioSession.sharedInstance(),
-      queue: .main
-    ) { notification in
-      // Ensure audio session stays active after route changes
-      do {
-        try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
-      } catch {
-        print("Failed to re-activate after route change: \\(error)")
-      }
-    }
-
-    // CRITICAL: media services reset (happens during long screen lock or system audio glitches).
-    // When this fires, the audio session is dead — without re-activation iOS will
-    // terminate the backgrounded app within minutes.
+    // Re-apply category after iOS media services reset (rare hardware glitch).
     NotificationCenter.default.addObserver(
       forName: AVAudioSession.mediaServicesWereResetNotification,
       object: nil,
       queue: .main
     ) { _ in
-      print("AVAudioSession media services were reset — re-configuring")
+      print("AVAudioSession media services were reset — re-applying category")
       do {
         try AVAudioSession.sharedInstance().setCategory(
           .playback,
@@ -109,51 +72,12 @@ function withAirPlayOptimize(config) {
           policy: .longFormAudio,
           options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
         )
-        try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
       } catch {
-        print("Failed to recover after media services reset: \\(error)")
+        print("Failed to re-apply category after media services reset: \\(error)")
       }
     }
-
-    // Activate audio session immediately at launch so iOS counts us as a long-form
-    // audio app from second one — this earns the full background grace window.
-    do {
-      try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
-      print("Audio session activated at launch")
-    } catch {
-      print("Initial audio session activation failed: \\(error)")
-    }
-
-    // Native keep-alive timer: every 25s re-assert that the session is active.
-    // Runs natively and survives JS suspension, preventing iOS from reclaiming
-    // our background audio slot during long screen-lock sessions.
-    let keepAliveTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
-    keepAliveTimer.schedule(deadline: .now() + 25.0, repeating: 25.0)
-    keepAliveTimer.setEventHandler {
-      let session = AVAudioSession.sharedInstance()
-      if session.category != .playback {
-        do {
-          try session.setCategory(
-            .playback,
-            mode: .default,
-            policy: .longFormAudio,
-            options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
-          )
-        } catch {
-          print("Keep-alive setCategory failed: \\(error)")
-        }
-      }
-      do {
-        try session.setActive(true, options: .notifyOthersOnDeactivation)
-      } catch {
-        // ignore — already active
-      }
-    }
-    keepAliveTimer.resume()
-    objc_setAssociatedObject(self, "AirPlayKeepAliveTimer", keepAliveTimer, .OBJC_ASSOCIATION_RETAIN)
 `;
 
-    // Insert before the return in didFinishLaunchingWithOptions
     config.modResults.contents = config.modResults.contents.replace(
       'return super.application(application, didFinishLaunchingWithOptions: launchOptions)',
       `${audioSessionCode}    return super.application(application, didFinishLaunchingWithOptions: launchOptions)`
