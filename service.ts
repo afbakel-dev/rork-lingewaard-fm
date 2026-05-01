@@ -29,7 +29,7 @@ module.exports = async function () {
       return;
     }
     const now = Date.now();
-    if (now - lastRecoveryAt < 4000) {
+    if (now - lastRecoveryAt < 1500) {
       console.log('[Service] Recovery throttled (' + reason + ')');
       return;
     }
@@ -100,17 +100,22 @@ module.exports = async function () {
           return;
         }
         if (s === State.Buffering || s === State.Loading || s === State.Ready) {
+          // Still alive — reset timer so we don't kill a slow-buffering stream
+          if (Date.now() - lastPlayingAt > 20000) {
+            console.log('[Service] Watchdog: stuck in ' + s + ' for >20s — recovering');
+            void restartStream('watchdog-stuck-' + s);
+          }
           return;
         }
         const silentFor = Date.now() - lastPlayingAt;
-        if (silentFor > 8000) {
+        if (silentFor > 3000) {
           console.log('[Service] Watchdog: silent for ' + silentFor + 'ms, state=' + s + ' — recovering');
           void restartStream('watchdog-silent-' + s);
         }
       } catch (error) {
         console.error('[Service] Watchdog error:', error);
       }
-    }, 4000);
+    }, 2000);
   };
 
   const stopWatchdog = (): void => {
@@ -175,8 +180,8 @@ module.exports = async function () {
       data.state === State.Error
     ) {
       if (!userPaused) {
-        console.log('[Service] State indicates stream stopped — scheduling recovery');
-        scheduleRestart('state-' + data.state, 2000);
+        console.log('[Service] State indicates stream stopped — recovering immediately');
+        scheduleRestart('state-' + data.state, 250);
       }
     }
 
@@ -197,7 +202,7 @@ module.exports = async function () {
       console.log('[Service] User paused — ignoring playback error');
       return;
     }
-    scheduleRestart('playback-error', 2000);
+    scheduleRestart('playback-error', 250);
   });
 
   TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
@@ -206,7 +211,7 @@ module.exports = async function () {
       console.log('[Service] User paused — ignoring queue-ended');
       return;
     }
-    scheduleRestart('queue-ended', 1500);
+    scheduleRestart('queue-ended', 250);
   });
 
   TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (data) => {

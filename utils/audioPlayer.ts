@@ -81,7 +81,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           maxBuffer: 50,
           playBuffer: 2.5,
           backBuffer: 0,
-          waitForBuffer: false,
+          waitForBuffer: true,
           autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
           iosCategoryMode: IOSCategoryMode.Default,

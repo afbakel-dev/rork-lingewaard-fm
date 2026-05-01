@@ -92,6 +92,65 @@ function withAirPlayOptimize(config) {
         print("Failed to re-activate after route change: \\(error)")
       }
     }
+
+    // CRITICAL: media services reset (happens during long screen lock or system audio glitches).
+    // When this fires, the audio session is dead — without re-activation iOS will
+    // terminate the backgrounded app within minutes.
+    NotificationCenter.default.addObserver(
+      forName: AVAudioSession.mediaServicesWereResetNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      print("AVAudioSession media services were reset — re-configuring")
+      do {
+        try AVAudioSession.sharedInstance().setCategory(
+          .playback,
+          mode: .default,
+          policy: .longFormAudio,
+          options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
+        )
+        try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+      } catch {
+        print("Failed to recover after media services reset: \\(error)")
+      }
+    }
+
+    // Activate audio session immediately at launch so iOS counts us as a long-form
+    // audio app from second one — this earns the full background grace window.
+    do {
+      try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+      print("Audio session activated at launch")
+    } catch {
+      print("Initial audio session activation failed: \\(error)")
+    }
+
+    // Native keep-alive timer: every 25s re-assert that the session is active.
+    // Runs natively and survives JS suspension, preventing iOS from reclaiming
+    // our background audio slot during long screen-lock sessions.
+    let keepAliveTimer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+    keepAliveTimer.schedule(deadline: .now() + 25.0, repeating: 25.0)
+    keepAliveTimer.setEventHandler {
+      let session = AVAudioSession.sharedInstance()
+      if session.category != .playback {
+        do {
+          try session.setCategory(
+            .playback,
+            mode: .default,
+            policy: .longFormAudio,
+            options: [.allowAirPlay, .allowBluetooth, .allowBluetoothA2DP]
+          )
+        } catch {
+          print("Keep-alive setCategory failed: \\(error)")
+        }
+      }
+      do {
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+      } catch {
+        // ignore — already active
+      }
+    }
+    keepAliveTimer.resume()
+    objc_setAssociatedObject(self, "AirPlayKeepAliveTimer", keepAliveTimer, .OBJC_ASSOCIATION_RETAIN)
 `;
 
     // Insert before the return in didFinishLaunchingWithOptions
