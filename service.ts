@@ -1,4 +1,4 @@
-import TrackPlayer, { Event } from 'react-native-track-player';
+import TrackPlayer, { Event, State } from 'react-native-track-player';
 
 module.exports = async function () {
   let lastUrl: string | undefined;
@@ -8,6 +8,9 @@ module.exports = async function () {
   let userPaused = false;
   let isRecovering = false;
   let recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
+  let lastRecoveryAt = 0;
+  let watchdogInterval: ReturnType<typeof setInterval> | null = null;
+  let lastPlayingAt = Date.now();
 
   const cancelPendingRecovery = (): void => {
     if (recoveryTimeout) {
@@ -25,6 +28,12 @@ module.exports = async function () {
       console.log('[Service] User paused — not restarting (' + reason + ')');
       return;
     }
+    const now = Date.now();
+    if (now - lastRecoveryAt < 4000) {
+      console.log('[Service] Recovery throttled (' + reason + ')');
+      return;
+    }
+    lastRecoveryAt = now;
     isRecovering = true;
     try {
       let url = lastUrl;
@@ -47,15 +56,21 @@ module.exports = async function () {
         return;
       }
       console.log('[Service] Restarting stream because: ' + reason);
+
+      const cacheBuster = Date.now();
+      const baseUrl = url.split('?')[0];
+      const freshUrl = baseUrl + '?_=' + cacheBuster;
+
       await TrackPlayer.reset();
       await TrackPlayer.add({
-        url,
+        url: freshUrl,
         title,
         artist,
         artwork,
         isLiveStream: true,
       });
       await TrackPlayer.play();
+      lastPlayingAt = Date.now();
       console.log('[Service] Stream restarted successfully');
     } catch (error) {
       console.error('[Service] restartStream failed:', error);
@@ -73,6 +88,38 @@ module.exports = async function () {
     }, delayMs);
   };
 
+  const startWatchdog = (): void => {
+    if (watchdogInterval) return;
+    watchdogInterval = setInterval(async () => {
+      if (userPaused || isRecovering) return;
+      try {
+        const info = await TrackPlayer.getPlaybackState();
+        const s = info.state;
+        if (s === State.Playing) {
+          lastPlayingAt = Date.now();
+          return;
+        }
+        if (s === State.Buffering || s === State.Loading || s === State.Ready) {
+          return;
+        }
+        const silentFor = Date.now() - lastPlayingAt;
+        if (silentFor > 8000) {
+          console.log('[Service] Watchdog: silent for ' + silentFor + 'ms, state=' + s + ' — recovering');
+          void restartStream('watchdog-silent-' + s);
+        }
+      } catch (error) {
+        console.error('[Service] Watchdog error:', error);
+      }
+    }, 4000);
+  };
+
+  const stopWatchdog = (): void => {
+    if (watchdogInterval) {
+      clearInterval(watchdogInterval);
+      watchdogInterval = null;
+    }
+  };
+
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
     console.log('[Service] RemotePlay received');
     userPaused = false;
@@ -83,6 +130,7 @@ module.exports = async function () {
     console.log('[Service] RemotePause received');
     userPaused = true;
     cancelPendingRecovery();
+    stopWatchdog();
     void TrackPlayer.pause();
   });
 
@@ -90,6 +138,7 @@ module.exports = async function () {
     console.log('[Service] RemoteStop received');
     userPaused = true;
     cancelPendingRecovery();
+    stopWatchdog();
     void TrackPlayer.stop();
   });
 
@@ -107,9 +156,28 @@ module.exports = async function () {
   TrackPlayer.addEventListener(Event.PlaybackState, async (data) => {
     console.log('[Service] PlaybackState changed:', data.state);
 
-    if (data.state === 'playing') {
+    if (data.state === State.Playing) {
       userPaused = false;
+      lastPlayingAt = Date.now();
       cancelPendingRecovery();
+      startWatchdog();
+    }
+
+    if (data.state === State.Paused) {
+      // Could be user pause OR iOS pausing on stream stall.
+      // Watchdog will recover if userPaused is false.
+    }
+
+    if (
+      data.state === State.Stopped ||
+      data.state === State.Ended ||
+      data.state === State.None ||
+      data.state === State.Error
+    ) {
+      if (!userPaused) {
+        console.log('[Service] State indicates stream stopped — scheduling recovery');
+        scheduleRestart('state-' + data.state, 2000);
+      }
     }
 
     try {
