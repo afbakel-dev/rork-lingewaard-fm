@@ -1,18 +1,20 @@
 import TrackPlayer, { Event } from 'react-native-track-player';
 
-const PlaybackState = {
-  Error: 'error' as const,
-  Stopped: 'stopped' as const,
-  Ended: 'ended' as const,
-  None: 'none' as const,
-  Paused: 'paused' as const,
-  Playing: 'playing' as const,
-};
-
 module.exports = async function () {
   let lastUrl: string | undefined;
+  let lastTitle: string | undefined;
+  let lastArtist: string | undefined;
+  let lastArtwork: string | number | undefined;
   let userPaused = false;
   let isRecovering = false;
+  let recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const cancelPendingRecovery = (): void => {
+    if (recoveryTimeout) {
+      clearTimeout(recoveryTimeout);
+      recoveryTimeout = null;
+    }
+  };
 
   const restartStream = async (reason: string): Promise<void> => {
     if (isRecovering) {
@@ -25,16 +27,26 @@ module.exports = async function () {
     }
     isRecovering = true;
     try {
-      const track = await TrackPlayer.getActiveTrack();
-      const url = track?.url || lastUrl;
+      let url = lastUrl;
+      let title = lastTitle ?? 'Live uitzending';
+      let artist = lastArtist ?? 'Lingewaard FM';
+      let artwork = lastArtwork;
+
+      try {
+        const track = await TrackPlayer.getActiveTrack();
+        if (track?.url) {
+          url = track.url;
+          title = track.title ?? title;
+          artist = track.artist ?? artist;
+          artwork = track.artwork ?? artwork;
+        }
+      } catch {}
+
       if (!url) {
         console.log('[Service] No URL to restart (' + reason + ')');
         return;
       }
       console.log('[Service] Restarting stream because: ' + reason);
-      const title = track?.title ?? 'Live uitzending';
-      const artist = track?.artist ?? 'Lingewaard FM';
-      const artwork = track?.artwork;
       await TrackPlayer.reset();
       await TrackPlayer.add({
         url,
@@ -52,6 +64,15 @@ module.exports = async function () {
     }
   };
 
+  const scheduleRestart = (reason: string, delayMs: number): void => {
+    if (userPaused || isRecovering) return;
+    cancelPendingRecovery();
+    recoveryTimeout = setTimeout(() => {
+      recoveryTimeout = null;
+      void restartStream(reason);
+    }, delayMs);
+  };
+
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
     console.log('[Service] RemotePlay received');
     userPaused = false;
@@ -61,12 +82,14 @@ module.exports = async function () {
   TrackPlayer.addEventListener(Event.RemotePause, () => {
     console.log('[Service] RemotePause received');
     userPaused = true;
+    cancelPendingRecovery();
     void TrackPlayer.pause();
   });
 
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
     console.log('[Service] RemoteStop received');
     userPaused = true;
+    cancelPendingRecovery();
     void TrackPlayer.stop();
   });
 
@@ -84,83 +107,47 @@ module.exports = async function () {
   TrackPlayer.addEventListener(Event.PlaybackState, async (data) => {
     console.log('[Service] PlaybackState changed:', data.state);
 
-    if (data.state === PlaybackState.Playing) {
+    if (data.state === 'playing') {
       userPaused = false;
+      cancelPendingRecovery();
     }
 
-    const track = await TrackPlayer.getActiveTrack();
-    if (track?.url) {
-      lastUrl = track.url;
-    }
-
-    if (
-      data.state === PlaybackState.Ended ||
-      data.state === PlaybackState.Stopped ||
-      data.state === PlaybackState.None
-    ) {
-      if (!userPaused) {
-        console.log('[Service] Unexpected state ' + data.state + ' — recovering live stream');
-        setTimeout(() => {
-          void restartStream('state=' + data.state);
-        }, 1500);
+    try {
+      const track = await TrackPlayer.getActiveTrack();
+      if (track?.url) {
+        lastUrl = track.url;
+        lastTitle = track.title ?? lastTitle;
+        lastArtist = track.artist ?? lastArtist;
+        lastArtwork = track.artwork ?? lastArtwork;
       }
-    }
+    } catch {}
   });
 
-  TrackPlayer.addEventListener(Event.PlaybackError, async (data) => {
+  TrackPlayer.addEventListener(Event.PlaybackError, (data) => {
     console.log('[Service] Playback error:', JSON.stringify(data));
-
-    const track = await TrackPlayer.getActiveTrack();
-    const url = track?.url || lastUrl;
-    if (!url) {
-      console.log('[Service] No track URL to retry');
+    if (userPaused) {
+      console.log('[Service] User paused — ignoring playback error');
       return;
     }
-
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const delay = attempt * 2000;
-      console.log(`[Service] Retry attempt ${attempt} in ${delay}ms`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-
-      try {
-        const currentTrack = await TrackPlayer.getActiveTrack();
-        if (currentTrack) {
-          await TrackPlayer.retry();
-          console.log(`[Service] Retry ${attempt} succeeded`);
-          return;
-        } else {
-          await TrackPlayer.reset();
-          await TrackPlayer.add({
-            url,
-            title: 'Live uitzending',
-            artist: 'Lingewaard FM',
-            isLiveStream: true,
-          });
-          await TrackPlayer.play();
-          console.log(`[Service] Re-added track and playing on attempt ${attempt}`);
-          return;
-        }
-      } catch (error) {
-        console.error(`[Service] Retry ${attempt} failed:`, error);
-      }
-    }
-
-    console.error('[Service] All retry attempts exhausted');
+    scheduleRestart('playback-error', 2000);
   });
 
-  TrackPlayer.addEventListener(Event.PlaybackQueueEnded, async () => {
+  TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
     console.log('[Service] Queue ended on live stream — restarting');
-    await restartStream('queue-ended');
+    if (userPaused) {
+      console.log('[Service] User paused — ignoring queue-ended');
+      return;
+    }
+    scheduleRestart('queue-ended', 1500);
   });
 
-  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async (data) => {
-    console.log('[Service] Active track changed:', JSON.stringify(data));
+  TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (data) => {
+    console.log('[Service] Active track changed');
     if (data.track?.url) {
       lastUrl = data.track.url;
+      lastTitle = data.track.title ?? lastTitle;
+      lastArtist = data.track.artist ?? lastArtist;
+      lastArtwork = data.track.artwork ?? lastArtwork;
     }
-  });
-
-  TrackPlayer.addEventListener(Event.PlaybackPlayWhenReadyChanged, async (data) => {
-    console.log('[Service] PlayWhenReadyChanged:', JSON.stringify(data));
   });
 };

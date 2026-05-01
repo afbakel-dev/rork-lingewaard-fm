@@ -77,11 +77,11 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         // Let react-native-track-player manage the audio session exclusively
         // Do NOT use expo-av Audio.setAudioModeAsync — it conflicts with RNTP
         await TrackPlayer.setupPlayer({
-          minBuffer: 30,
-          maxBuffer: 120,
-          playBuffer: 5,
+          minBuffer: 15,
+          maxBuffer: 50,
+          playBuffer: 2.5,
           backBuffer: 0,
-          waitForBuffer: true,
+          waitForBuffer: false,
           autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
           iosCategoryMode: IOSCategoryMode.Default,
@@ -97,7 +97,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
           },
-          progressUpdateEventInterval: 10,
+          progressUpdateEventInterval: 30,
         });
         isSetup = true;
         console.log('TrackPlayer setup complete — background audio configured');
