@@ -1,4 +1,15 @@
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export const USER_PAUSED_KEY = '@lingewaardfm/userPaused';
+
+async function setUserPausedFlag(value: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(USER_PAUSED_KEY, value ? '1' : '0');
+  } catch (e) {
+    console.error('Failed to write userPaused flag:', e);
+  }
+}
 
 export interface AudioPlayerAPI {
   setup: () => Promise<void>;
@@ -106,6 +117,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       }
     },
     play: async (url: string, title: string, artist: string, artwork?: string) => {
+      await setUserPausedFlag(false);
       await TrackPlayer.reset();
       await TrackPlayer.add({
         url,
@@ -118,10 +130,12 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       console.log('TrackPlayer playing');
     },
     pause: async () => {
+      await setUserPausedFlag(true);
       await TrackPlayer.pause();
       console.log('TrackPlayer paused');
     },
     stop: async () => {
+      await setUserPausedFlag(true);
       await TrackPlayer.pause();
       console.log('TrackPlayer stopped (paused to keep session alive)');
     },
