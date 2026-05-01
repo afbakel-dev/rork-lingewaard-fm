@@ -47,6 +47,7 @@ export default function RadioPlayer() {
   const [nowPlaying, setNowPlaying] = useState<string>(NOW_PLAYING_PLACEHOLDER);
   const [isNowPlayingLoading, setIsNowPlayingLoading] = useState<boolean>(false);
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(true);
+  const [isAppActive, setIsAppActive] = useState<boolean>(true);
   const previousVolumeRef = useRef<number>(1.0);
   const audioPlayerRef = useRef<AudioPlayerAPI | null>(null);
 
@@ -110,14 +111,16 @@ export default function RadioPlayer() {
       console.log('[AppState] Transition:', appStateRef.current, '->', nextAppState);
 
       if (wasInBackground && isNowActive) {
-        console.log('[AppState] App returned to foreground — re-enabling JS animations');
+        console.log('[AppState] App returned to foreground — re-enabling JS animations and timers');
         isInBackgroundRef.current = false;
         setAnimationsEnabled(true);
+        setIsAppActive(true);
         void syncPlayerState();
       } else if (nextAppState.match(/inactive|background/)) {
-        console.log('[AppState] App going to background — stopping JS-thread animations to avoid iOS watchdog kill');
+        console.log('[AppState] App going to background — stopping JS-thread animations and timers to avoid iOS watchdog kill');
         isInBackgroundRef.current = true;
         setAnimationsEnabled(false);
+        setIsAppActive(false);
       }
 
       appStateRef.current = nextAppState;
@@ -127,6 +130,10 @@ export default function RadioPlayer() {
   }, [syncPlayerState]);
 
   useEffect(() => {
+    if (!animationsEnabled) {
+      liveOpacity.setValue(1);
+      return;
+    }
     const liveBlink = Animated.loop(
       Animated.sequence([
         Animated.timing(liveOpacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
@@ -135,7 +142,7 @@ export default function RadioPlayer() {
     );
     liveBlink.start();
     return () => liveBlink.stop();
-  }, [liveOpacity]);
+  }, [liveOpacity, animationsEnabled]);
 
   useEffect(() => {
     if (playerState === 'playing' && animationsEnabled) {
@@ -298,23 +305,20 @@ export default function RadioPlayer() {
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    if (playerState === 'playing') {
+    if (playerState === 'playing' && isAppActive) {
       void fetchNowPlaying();
       intervalId = setInterval(() => {
-        if (!isInBackgroundRef.current) {
-          void fetchNowPlaying();
-        } else {
-          console.log('[NowPlaying] Skipping fetch — app is in background');
-        }
+        void fetchNowPlaying();
       }, 15000);
     }
 
     return () => {
       if (intervalId) {
+        console.log('[NowPlaying] Clearing interval (state change or background)');
         clearInterval(intervalId);
       }
     };
-  }, [fetchNowPlaying, playerState]);
+  }, [fetchNowPlaying, playerState, isAppActive]);
 
   const waveAnims = [waveAnim1, waveAnim2, waveAnim3, waveAnim4, waveAnim5];
 

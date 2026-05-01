@@ -77,7 +77,7 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
   if (nativePlayerModule) return nativePlayerModule;
 
   const TrackPlayer = (await import('react-native-track-player')).default;
-  const { Capability, AppKilledPlaybackBehavior, IOSCategoryOptions, IOSCategory, IOSCategoryMode } = await import('react-native-track-player');
+  const { Capability, AppKilledPlaybackBehavior, IOSCategory, IOSCategoryMode } = await import('react-native-track-player');
 
   let isSetup = false;
 
@@ -87,6 +87,12 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
       try {
         // Let react-native-track-player manage the audio session exclusively
         // Do NOT use expo-av Audio.setAudioModeAsync — it conflicts with RNTP
+        // Keep this minimal. Letting RNTP use its defaults for the audio
+        // session is what keeps iOS happy in background. AirPlay and
+        // Bluetooth A2DP are already supported by the default Playback
+        // category — passing extra options can invalidate the session
+        // configuration on some iOS versions and cause the OS to
+        // terminate the app ~50s after screen lock.
         await TrackPlayer.setupPlayer({
           minBuffer: 15,
           maxBuffer: 50,
@@ -96,18 +102,18 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
           autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
           iosCategoryMode: IOSCategoryMode.Default,
-          iosCategoryOptions: [
-            IOSCategoryOptions.AllowAirPlay,
-            IOSCategoryOptions.AllowBluetoothA2DP,
-          ],
         });
+        // NOTE: progressUpdateEventInterval is intentionally NOT set.
+        // For a live stream we don't need progress events, and any value
+        // here causes RNTP to fire timers in the background JS service,
+        // which keeps the JS bridge alive and contributes to iOS
+        // terminating the app process while the screen is locked.
         await TrackPlayer.updateOptions({
           capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
           compactCapabilities: [Capability.Play, Capability.Pause],
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.ContinuePlayback,
           },
-          progressUpdateEventInterval: 30,
         });
         isSetup = true;
         console.log('TrackPlayer setup complete — background audio configured');
