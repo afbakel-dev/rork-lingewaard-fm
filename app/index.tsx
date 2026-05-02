@@ -563,13 +563,18 @@ const styles = StyleSheet.create({
   logoContainer: {
     marginBottom: 28,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 20,
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 10,
   },
   logoImage: {
-    width: 220,
-    height: 140,
+    width: 280,
+    height: 160,
   },
   divider: {
     width: 40,
