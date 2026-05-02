@@ -94,14 +94,11 @@ async function getNativePlayer(): Promise<AudioPlayerAPI> {
         // configuration on some iOS versions and cause the OS to
         // terminate the app ~50s after screen lock.
         await TrackPlayer.setupPlayer({
-          // Smaller startup buffers => audio reaches AirPlay/Sonos
-          // almost immediately. Live stream still keeps a healthy
-          // rolling buffer via maxBuffer.
-          minBuffer: 2,
+          minBuffer: 15,
           maxBuffer: 50,
-          playBuffer: 0.5,
+          playBuffer: 2.5,
           backBuffer: 0,
-          waitForBuffer: false,
+          waitForBuffer: true,
           autoHandleInterruptions: true,
           iosCategory: IOSCategory.Playback,
           iosCategoryMode: IOSCategoryMode.Default,
