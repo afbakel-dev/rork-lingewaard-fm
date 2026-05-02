@@ -1,0 +1,10 @@
+{
+  "$schema": "https://rork.com/schema/rork.json",
+  "apps": [
+    {
+      "name": "Lingewaard FM",
+      "path": "expo",
+      "framework": "react-native"
+    }
+  ]
+}
