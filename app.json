@@ -27,7 +27,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.lingewaard_fm"
+      "package": "app.rork.lingewaard_fm1"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
