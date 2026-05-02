@@ -3,7 +3,7 @@
   "apps": [
     {
       "name": "Lingewaard FM",
-      "path": "expo",
+      "path": ".",
       "framework": "react-native"
     }
   ]
