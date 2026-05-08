@@ -1,0 +1,21 @@
+{
+  "cli": {
+    "version": ">= 3.0.0"
+  },
+  "build": {
+    "production": {
+      "ios": {
+        "cache": {
+          "key": "v2-no-expo-av"
+        }
+      }
+    },
+    "preview": {
+      "ios": {
+        "cache": {
+          "key": "v2-no-expo-av"
+        }
+      }
+    }
+  }
+}
