@@ -3,18 +3,19 @@
     "version": ">= 3.0.0"
   },
   "build": {
-    "production": {
-      "ios": {
-        "cache": {
-          "key": "v2-no-expo-av"
-        }
+    "development": {
+      "cache": {
+        "disabled": true
       }
     },
     "preview": {
-      "ios": {
-        "cache": {
-          "key": "v2-no-expo-av"
-        }
+      "cache": {
+        "disabled": true
+      }
+    },
+    "production": {
+      "cache": {
+        "disabled": true
       }
     }
   }
