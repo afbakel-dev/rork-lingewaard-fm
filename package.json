@@ -1,12 +1,9 @@
 {
-  "name": "expo-app",
+  "name": "project",
   "main": "index.js",
   "version": "1.0.0",
   "scripts": {
-    "start": "bunx rork start -p skmvya5oiliejowv3r3u8 --tunnel",
-    "start-web": "bunx rork start -p skmvya5oiliejowv3r3u8 --web --tunnel",
-    "start-web-dev": "DEBUG=expo* bunx rork start -p skmvya5oiliejowv3r3u8 --web --tunnel",
-    "lint": "expo lint"
+    "postinstall": "git config core.hooksPath .githooks && chmod +x .githooks/*"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
