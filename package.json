@@ -1,10 +1,12 @@
 {
-  "name": "project",
+  "name": "expo-app",
   "main": "index.js",
   "version": "1.0.0",
   "scripts": {
-    "build": "node canary.js && tsc",
-    "prepare": "node canary.js"
+    "start": "bunx rork start -p skmvya5oiliejowv3r3u8 --tunnel",
+    "start-web": "bunx rork start -p skmvya5oiliejowv3r3u8 --web --tunnel",
+    "start-web-dev": "DEBUG=expo* bunx rork start -p skmvya5oiliejowv3r3u8 --web --tunnel",
+    "lint": "expo lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
